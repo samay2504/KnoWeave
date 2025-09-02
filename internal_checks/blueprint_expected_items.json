@@ -1,0 +1,106 @@
+{
+  "blueprint_analysis": {
+    "source_file": "blueprint_dynamic_prompt_mode.md",
+    "parsed_date": "2025-08-31",
+    "blueprint_version": "dynamic_topic_mode"
+  },
+  "required_components": {
+    "agents": [
+      {
+        "name": "Session Manager / Policy Agent",
+        "file_expected": "server/agents/session_manager.py",
+        "responsibilities": ["session lifecycle", "Prompt Template Generator (PTG)", "MongoDB + JSON persistence", "global policies"]
+      },
+      {
+        "name": "Perception Agent", 
+        "file_expected": "server/agents/perception.py",
+        "responsibilities": ["text analysis", "POS/NER/coref/SRL", "tone/POV detection", "entity/event extraction"]
+      },
+      {
+        "name": "Planner / Generator Agent",
+        "file_expected": "server/agents/planner.py", 
+        "responsibilities": ["candidate continuations", "3 branches max", "structured JSON output", "topic-agnostic generation"]
+      },
+      {
+        "name": "Graph Manager Agent",
+        "file_expected": "server/agents/graph_manager.py",
+        "responsibilities": ["knowledge graph", "backtracking", "node summarization", "pruning", "archive"]
+      },
+      {
+        "name": "Verifier Agent",
+        "file_expected": "server/agents/verifier.py", 
+        "responsibilities": ["grammar check", "POV/tense consistency", "character consistency", "fact-checking", "bias detection"]
+      },
+      {
+        "name": "Evaluator / Scorer Agent",
+        "file_expected": "server/agents/evaluator.py",
+        "responsibilities": ["branch scoring", "coherence", "causal strength", "factual accuracy", "ranking"]
+      }
+    ],
+    "api_endpoints": [
+      "POST /api/session/new",
+      "POST /api/session/{id}/invoke_suggest", 
+      "POST /api/session/{id}/accept_branch",
+      "POST /api/session/{id}/backtrack",
+      "GET /api/session/{id}/snapshot",
+      "GET /api/health"
+    ],
+    "database_components": [
+      {
+        "type": "ArangoDB",
+        "init_script": "docker/arangodb-init.js",
+        "collections": ["users", "sessions", "entities", "events", "relationships"],
+        "graph": "knowledge_graph"
+      },
+      {
+        "type": "MongoDB", 
+        "init_script": "docker/mongo-init.js",
+        "collections": ["stories", "sessions", "users"]
+      }
+    ],
+    "storage_requirements": [
+      "MongoDB primary storage",
+      "JSON fallback to /data/backups/{session_id}/",
+      "Workspace snapshots"
+    ],
+    "prompt_templates": [
+      "prompts/agent_templates.json (existing)",
+      "prompts/examples.json (few-shot bank)",
+      "PTG (Prompt Template Generator) logic"
+    ],
+    "frontend_requirements": [
+      "Single-page React app",
+      "Left panel: story editor", 
+      "Center panel: 3 suggestion cards",
+      "Right panel: graph viewer + fact-check panel",
+      "Health check UI component"
+    ],
+    "config_files": [
+      ".env.example",
+      ".env (local, gitignored)", 
+      "server/config/google_oauth.json (gitignored)",
+      "docker-compose.yml"
+    ],
+    "testing_requirements": [
+      "Unit tests for each agent",
+      "Integration tests",
+      "JSON fallback tests",
+      "Health endpoint tests",
+      "CI/CD pipeline"
+    ]
+  },
+  "compliance_checks": [
+    "A. Project & blueprint sanity",
+    "B. Source completeness scan", 
+    "C. Prompt templates & PTG validation",
+    "D. Agent code correctness",
+    "E. DB init & integration",
+    "F. Health endpoints & integration points",
+    "G. Config & secrets",
+    "H. Tests & CI",
+    "I. Linting, formatting, and static typing", 
+    "J. LLM provider & fallback behavior",
+    "K. No commented-out critical logic",
+    "L. Documentation & README"
+  ]
+}

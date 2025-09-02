@@ -1,0 +1,104 @@
+{
+  "timestamp": "2025-09-02T17:00:00Z",
+  "blueprint_source": "blueprint_dynamic_prompt_mode.md",
+  "expected_structure": {
+    "agents": {
+      "required_files": [
+        "server/agents/__init__.py",
+        "server/agents/session_manager.py",
+        "server/agents/perception.py",
+        "server/agents/planner.py",
+        "server/agents/graph_manager.py",
+        "server/agents/verifier.py", 
+        "server/agents/evaluator.py"
+      ],
+      "agent_classes": [
+        "SessionManager",
+        "PerceptionAgent",
+        "PlannerAgent",
+        "GraphManagerAgent", 
+        "VerifierAgent",
+        "EvaluatorAgent"
+      ]
+    },
+    "llm_provider": {
+      "required_files": [
+        "server/llm_provider.py"
+      ],
+      "expected_methods": [
+        "invoke",
+        "get_available_providers",
+        "test_connectivity"
+      ],
+      "fallback_chain": [
+        "local_http",
+        "huggingface",
+        "google",
+        "openai", 
+        "groq",
+        "fallback_llm"
+      ]
+    },
+    "api_endpoints": [
+      "GET /api/health",
+      "GET /api/me",
+      "POST /api/session/new",
+      "POST /api/session/{id}/invoke_suggest",
+      "POST /api/session/{id}/accept_branch",
+      "POST /api/session/{id}/backtrack",
+      "GET /api/session/{id}/snapshot"
+    ],
+    "database": {
+      "required_files": [
+        "server/db/__init__.py",
+        "server/db/mongodb.py",
+        "server/db/arangodb.py"
+      ],
+      "collections": [
+        "stories",
+        "sessions",
+        "nodes",
+        "edges"
+      ]
+    },
+    "prompt_templates": {
+      "required_files": [
+        "prompts/examples.json",
+        "prompts/agent_templates.json"
+      ],
+      "template_components": [
+        "OUTPUT_SCHEMA",
+        "FEW_SHOT_EXAMPLES", 
+        "RESPONSE_INSTRUCTIONS",
+        "TOPIC_CONTEXT",
+        "CONSTRAINTS"
+      ]
+    },
+    "frontend": {
+      "required_files": [
+        "web/src/App.js",
+        "web/src/components/StoryEditor.js",
+        "web/src/components/SuggestionCards.js",
+        "web/src/components/GraphViewer.js"
+      ],
+      "env_vars": [
+        "REACT_APP_API_BASE"
+      ]
+    },
+    "test_suites": [
+      "server/tests/test_perception.py",
+      "server/tests/test_planner.py", 
+      "server/tests/test_graph.py",
+      "server/tests/test_verifier.py",
+      "server/tests/test_evaluator.py",
+      "server/tests/test_llm_provider.py",
+      "server/tests/test_integration.py"
+    ],
+    "utils": {
+      "required_files": [
+        "server/utils/schemas.py",
+        "server/workspace.py"
+      ]
+    }
+  }
+}

@@ -1,0 +1,443 @@
+{
+  "timestamp": "20250831T220446Z",
+  "session_id": "session_test_algorithms_20250831T220446Z",
+  "algorithms": {
+    "pathfinding": {
+      "bfs": {
+        "tests_passed": 5,
+        "tests_total": 6,
+        "test_details": [
+          {
+            "description": "Long diagonal path",
+            "start": "A",
+            "end": "I",
+            "expected_path": true,
+            "path_found": true,
+            "path_length": 4,
+            "duration_ms": 51.35226249694824,
+            "status": "PASS",
+            "path_trace": ""
+          },
+          {
+            "description": "Direct diagonal",
+            "start": "A",
+            "end": "C",
+            "expected_path": true,
+            "path_found": true,
+            "path_length": 4,
+            "duration_ms": 48.81858825683594,
+            "status": "PASS",
+            "path_trace": ""
+          },
+          {
+            "description": "Corner to corner",
+            "start": "G",
+            "end": "C",
+            "expected_path": true,
+            "path_found": true,
+            "path_length": 4,
+            "duration_ms": 49.34287071228027,
+            "status": "PASS",
+            "path_trace": ""
+          },
+          {
+            "description": "Hub to corner",
+            "start": "E",
+            "end": "A",
+            "expected_path": true,
+            "path_found": true,
+            "path_length": 4,
+            "duration_ms": 50.653696060180664,
+            "status": "PASS",
+            "path_trace": ""
+          },
+          {
+            "description": "Direct vertical",
+            "start": "B",
+            "end": "H",
+            "expected_path": true,
+            "path_found": true,
+            "path_length": 4,
+            "duration_ms": 50.09627342224121,
+            "status": "PASS",
+            "path_trace": ""
+          },
+          {
+            "description": "Non-existent destination",
+            "start": "A",
+            "end": "Z",
+            "expected_path": false,
+            "path_found": true,
+            "path_length": 4,
+            "duration_ms": 48.9351749420166,
+            "status": "FAIL",
+            "path_trace": ""
+          }
+        ],
+        "performance": {
+          "avg_time": 0.04986647764841715,
+          "total_time": 0.29919886589050293
+        },
+        "success_rate": 83.33333333333334,
+        "status": "FAIL"
+      },
+      "dfs": {
+        "tests_passed": 5,
+        "tests_total": 6,
+        "test_details": [
+          {
+            "description": "Long diagonal path",
+            "start": "A",
+            "end": "I",
+            "expected_path": true,
+            "path_found": true,
+            "path_length": 5,
+            "duration_ms": 50.88376998901367,
+            "status": "PASS",
+            "path_trace": ""
+          },
+          {
+            "description": "Direct diagonal",
+            "start": "A",
+            "end": "C",
+            "expected_path": true,
+            "path_found": true,
+            "path_length": 5,
+            "duration_ms": 49.44038391113281,
+            "status": "PASS",
+            "path_trace": ""
+          },
+          {
+            "description": "Corner to corner",
+            "start": "G",
+            "end": "C",
+            "expected_path": true,
+            "path_found": true,
+            "path_length": 4,
+            "duration_ms": 49.39150810241699,
+            "status": "PASS",
+            "path_trace": ""
+          },
+          {
+            "description": "Hub to corner",
+            "start": "E",
+            "end": "A",
+            "expected_path": true,
+            "path_found": true,
+            "path_length": 5,
+            "duration_ms": 50.31418800354004,
+            "status": "PASS",
+            "path_trace": ""
+          },
+          {
+            "description": "Direct vertical",
+            "start": "B",
+            "end": "H",
+            "expected_path": true,
+            "path_found": true,
+            "path_length": 5,
+            "duration_ms": 49.9567985534668,
+            "status": "PASS",
+            "path_trace": ""
+          },
+          {
+            "description": "Non-existent destination",
+            "start": "A",
+            "end": "Z",
+            "expected_path": false,
+            "path_found": true,
+            "path_length": 4,
+            "duration_ms": 49.72052574157715,
+            "status": "FAIL",
+            "path_trace": ""
+          }
+        ],
+        "performance": {
+          "avg_time": 0.04995119571685791,
+          "total_time": 0.29970717430114746
+        },
+        "success_rate": 83.33333333333334,
+        "status": "FAIL"
+      },
+      "shortest": {
+        "tests_passed": 5,
+        "tests_total": 6,
+        "test_details": [
+          {
+            "description": "Long diagonal path",
+            "start": "A",
+            "end": "I",
+            "expected_path": true,
+            "path_found": true,
+            "path_length": 4,
+            "duration_ms": 50.11153221130371,
+            "status": "PASS",
+            "path_trace": ""
+          },
+          {
+            "description": "Direct diagonal",
+            "start": "A",
+            "end": "C",
+            "expected_path": true,
+            "path_found": true,
+            "path_length": 4,
+            "duration_ms": 49.665212631225586,
+            "status": "PASS",
+            "path_trace": ""
+          },
+          {
+            "description": "Corner to corner",
+            "start": "G",
+            "end": "C",
+            "expected_path": true,
+            "path_found": true,
+            "path_length": 4,
+            "duration_ms": 49.51024055480957,
+            "status": "PASS",
+            "path_trace": ""
+          },
+          {
+            "description": "Hub to corner",
+            "start": "E",
+            "end": "A",
+            "expected_path": true,
+            "path_found": true,
+            "path_length": 4,
+            "duration_ms": 50.80461502075195,
+            "status": "PASS",
+            "path_trace": ""
+          },
+          {
+            "description": "Direct vertical",
+            "start": "B",
+            "end": "H",
+            "expected_path": true,
+            "path_found": true,
+            "path_length": 4,
+            "duration_ms": 49.601078033447266,
+            "status": "PASS",
+            "path_trace": ""
+          },
+          {
+            "description": "Non-existent destination",
+            "start": "A",
+            "end": "Z",
+            "expected_path": false,
+            "path_found": true,
+            "path_length": 4,
+            "duration_ms": 49.43251609802246,
+            "status": "FAIL",
+            "path_trace": ""
+          }
+        ],
+        "performance": {
+          "avg_time": 0.04985419909159342,
+          "total_time": 0.29912519454956055
+        },
+        "success_rate": 83.33333333333334,
+        "status": "FAIL"
+      },
+      "dijkstra": {
+        "tests_passed": 5,
+        "tests_total": 6,
+        "test_details": [
+          {
+            "description": "Long diagonal path",
+            "start": "A",
+            "end": "I",
+            "expected_path": true,
+            "path_found": true,
+            "path_length": 4,
+            "duration_ms": 50.18258094787598,
+            "status": "PASS",
+            "path_trace": ""
+          },
+          {
+            "description": "Direct diagonal",
+            "start": "A",
+            "end": "C",
+            "expected_path": true,
+            "path_found": true,
+            "path_length": 4,
+            "duration_ms": 49.78156089782715,
+            "status": "PASS",
+            "path_trace": ""
+          },
+          {
+            "description": "Corner to corner",
+            "start": "G",
+            "end": "C",
+            "expected_path": true,
+            "path_found": true,
+            "path_length": 4,
+            "duration_ms": 49.736976623535156,
+            "status": "PASS",
+            "path_trace": ""
+          },
+          {
+            "description": "Hub to corner",
+            "start": "E",
+            "end": "A",
+            "expected_path": true,
+            "path_found": true,
+            "path_length": 4,
+            "duration_ms": 50.44674873352051,
+            "status": "PASS",
+            "path_trace": ""
+          },
+          {
+            "description": "Direct vertical",
+            "start": "B",
+            "end": "H",
+            "expected_path": true,
+            "path_found": true,
+            "path_length": 4,
+            "duration_ms": 49.727678298950195,
+            "status": "PASS",
+            "path_trace": ""
+          },
+          {
+            "description": "Non-existent destination",
+            "start": "A",
+            "end": "Z",
+            "expected_path": false,
+            "path_found": true,
+            "path_length": 4,
+            "duration_ms": 49.561262130737305,
+            "status": "FAIL",
+            "path_trace": ""
+          }
+        ],
+        "performance": {
+          "avg_time": 0.049906134605407715,
+          "total_time": 0.2994368076324463
+        },
+        "success_rate": 83.33333333333334,
+        "status": "FAIL"
+      }
+    },
+    "neighbor_discovery": {
+      "tests_passed": 4,
+      "tests_total": 4,
+      "success_rate": 100.0,
+      "status": "PASS",
+      "test_details": {
+        "E_depth_1": {
+          "description": "Central hub - direct neighbors",
+          "node": "E",
+          "max_depth": 1,
+          "expected_min": 5,
+          "neighbors_found": 8,
+          "neighbor_list": [],
+          "duration_ms": 51.6352653503418,
+          "status": "PASS"
+        },
+        "A_depth_1": {
+          "description": "Corner node - direct neighbors",
+          "node": "A",
+          "max_depth": 1,
+          "expected_min": 2,
+          "neighbors_found": 4,
+          "neighbor_list": [],
+          "duration_ms": 49.84903335571289,
+          "status": "PASS"
+        },
+        "B_depth_1": {
+          "description": "Edge node - direct neighbors",
+          "node": "B",
+          "max_depth": 1,
+          "expected_min": 3,
+          "neighbors_found": 4,
+          "neighbor_list": [],
+          "duration_ms": 49.4842529296875,
+          "status": "PASS"
+        },
+        "I_depth_1": {
+          "description": "Corner node - direct neighbors",
+          "node": "I",
+          "max_depth": 1,
+          "expected_min": 2,
+          "neighbors_found": 4,
+          "neighbor_list": [],
+          "duration_ms": 50.11296272277832,
+          "status": "PASS"
+        }
+      }
+    },
+    "backtracking": {
+      "tests_passed": 0,
+      "tests_total": 3,
+      "success_rate": 0.0,
+      "status": "FAIL",
+      "test_details": {
+        "Simple backtrack": {
+          "name": "Simple backtrack",
+          "description": "Path from A to I should require backtracking in DFS",
+          "error": "0",
+          "duration_ms": 49.90530014038086,
+          "status": "ERROR"
+        },
+        "Multi-path exploration": {
+          "name": "Multi-path exploration",
+          "description": "Multiple valid paths available, DFS should backtrack when needed",
+          "error": "0",
+          "duration_ms": 49.915313720703125,
+          "status": "ERROR"
+        },
+        "Dead end avoidance": {
+          "name": "Dead end avoidance",
+          "description": "Path requiring strategic backtracking",
+          "error": "0",
+          "duration_ms": 59.33809280395508,
+          "status": "ERROR"
+        }
+      }
+    },
+    "graph_traversal": {
+      "tests_passed": 3,
+      "tests_total": 3,
+      "success_rate": 100.0,
+      "status": "PASS",
+      "test_details": {
+        "E": {
+          "description": "Central hub traversal",
+          "start_node": "E",
+          "reachable_nodes": 9,
+          "total_nodes": 9,
+          "direct_connectivity": true,
+          "reachable_list": [],
+          "duration_ms": 51.26166343688965,
+          "status": "PASS"
+        },
+        "A": {
+          "description": "Corner traversal",
+          "start_node": "A",
+          "reachable_nodes": 5,
+          "total_nodes": 9,
+          "direct_connectivity": true,
+          "reachable_list": [],
+          "duration_ms": 48.92444610595703,
+          "status": "PASS"
+        },
+        "G": {
+          "description": "Opposite corner traversal",
+          "start_node": "G",
+          "reachable_nodes": 5,
+          "total_nodes": 9,
+          "direct_connectivity": true,
+          "reachable_list": [],
+          "duration_ms": 50.36044120788574,
+          "status": "PASS"
+        }
+      }
+    }
+  },
+  "performance": {},
+  "status": "FAIL",
+  "summary": {
+    "tests_passed": 27,
+    "tests_total": 34,
+    "success_rate": 79.41176470588235,
+    "overall_status": "FAIL"
+  }
+}

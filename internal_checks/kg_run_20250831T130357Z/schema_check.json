@@ -1,0 +1,17 @@
+{
+  "timestamp": "20250831T130357Z",
+  "database_exists": true,
+  "collections": {
+    "nodes": {
+      "exists": true,
+      "accessible": true
+    },
+    "edges": {
+      "exists": true,
+      "accessible": true
+    }
+  },
+  "graph_exists": false,
+  "indexes": {},
+  "status": "PASS"
+}

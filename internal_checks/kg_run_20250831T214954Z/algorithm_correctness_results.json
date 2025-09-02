@@ -1,0 +1,378 @@
+{
+  "timestamp": "20250831T214954Z",
+  "session_id": "session_test_algorithms_20250831T214954Z",
+  "algorithms": {
+    "pathfinding": {
+      "bfs": {
+        "tests_passed": 0,
+        "tests_total": 6,
+        "test_details": [
+          {
+            "description": "Long diagonal path",
+            "start": "A",
+            "end": "I",
+            "expected_path": true,
+            "error": "ArangoGraphClient.find_path() got an unexpected keyword argument 'start_node_id'",
+            "duration_ms": 0.0,
+            "status": "ERROR"
+          },
+          {
+            "description": "Direct diagonal",
+            "start": "A",
+            "end": "C",
+            "expected_path": true,
+            "error": "ArangoGraphClient.find_path() got an unexpected keyword argument 'start_node_id'",
+            "duration_ms": 0.0,
+            "status": "ERROR"
+          },
+          {
+            "description": "Corner to corner",
+            "start": "G",
+            "end": "C",
+            "expected_path": true,
+            "error": "ArangoGraphClient.find_path() got an unexpected keyword argument 'start_node_id'",
+            "duration_ms": 0.0,
+            "status": "ERROR"
+          },
+          {
+            "description": "Hub to corner",
+            "start": "E",
+            "end": "A",
+            "expected_path": true,
+            "error": "ArangoGraphClient.find_path() got an unexpected keyword argument 'start_node_id'",
+            "duration_ms": 0.0,
+            "status": "ERROR"
+          },
+          {
+            "description": "Direct vertical",
+            "start": "B",
+            "end": "H",
+            "expected_path": true,
+            "error": "ArangoGraphClient.find_path() got an unexpected keyword argument 'start_node_id'",
+            "duration_ms": 0.0,
+            "status": "ERROR"
+          },
+          {
+            "description": "Non-existent destination",
+            "start": "A",
+            "end": "Z",
+            "expected_path": false,
+            "error": "ArangoGraphClient.find_path() got an unexpected keyword argument 'start_node_id'",
+            "duration_ms": 0.0,
+            "status": "ERROR"
+          }
+        ],
+        "performance": {
+          "avg_time": 0.0,
+          "total_time": 0.0
+        },
+        "success_rate": 0.0,
+        "status": "FAIL"
+      },
+      "dfs": {
+        "tests_passed": 0,
+        "tests_total": 6,
+        "test_details": [
+          {
+            "description": "Long diagonal path",
+            "start": "A",
+            "end": "I",
+            "expected_path": true,
+            "error": "ArangoGraphClient.find_path() got an unexpected keyword argument 'start_node_id'",
+            "duration_ms": 0.0,
+            "status": "ERROR"
+          },
+          {
+            "description": "Direct diagonal",
+            "start": "A",
+            "end": "C",
+            "expected_path": true,
+            "error": "ArangoGraphClient.find_path() got an unexpected keyword argument 'start_node_id'",
+            "duration_ms": 0.0,
+            "status": "ERROR"
+          },
+          {
+            "description": "Corner to corner",
+            "start": "G",
+            "end": "C",
+            "expected_path": true,
+            "error": "ArangoGraphClient.find_path() got an unexpected keyword argument 'start_node_id'",
+            "duration_ms": 0.0,
+            "status": "ERROR"
+          },
+          {
+            "description": "Hub to corner",
+            "start": "E",
+            "end": "A",
+            "expected_path": true,
+            "error": "ArangoGraphClient.find_path() got an unexpected keyword argument 'start_node_id'",
+            "duration_ms": 0.0,
+            "status": "ERROR"
+          },
+          {
+            "description": "Direct vertical",
+            "start": "B",
+            "end": "H",
+            "expected_path": true,
+            "error": "ArangoGraphClient.find_path() got an unexpected keyword argument 'start_node_id'",
+            "duration_ms": 0.0,
+            "status": "ERROR"
+          },
+          {
+            "description": "Non-existent destination",
+            "start": "A",
+            "end": "Z",
+            "expected_path": false,
+            "error": "ArangoGraphClient.find_path() got an unexpected keyword argument 'start_node_id'",
+            "duration_ms": 0.0,
+            "status": "ERROR"
+          }
+        ],
+        "performance": {
+          "avg_time": 0.0,
+          "total_time": 0.0
+        },
+        "success_rate": 0.0,
+        "status": "FAIL"
+      },
+      "shortest": {
+        "tests_passed": 0,
+        "tests_total": 6,
+        "test_details": [
+          {
+            "description": "Long diagonal path",
+            "start": "A",
+            "end": "I",
+            "expected_path": true,
+            "error": "ArangoGraphClient.find_path() got an unexpected keyword argument 'start_node_id'",
+            "duration_ms": 0.0,
+            "status": "ERROR"
+          },
+          {
+            "description": "Direct diagonal",
+            "start": "A",
+            "end": "C",
+            "expected_path": true,
+            "error": "ArangoGraphClient.find_path() got an unexpected keyword argument 'start_node_id'",
+            "duration_ms": 0.0,
+            "status": "ERROR"
+          },
+          {
+            "description": "Corner to corner",
+            "start": "G",
+            "end": "C",
+            "expected_path": true,
+            "error": "ArangoGraphClient.find_path() got an unexpected keyword argument 'start_node_id'",
+            "duration_ms": 0.0,
+            "status": "ERROR"
+          },
+          {
+            "description": "Hub to corner",
+            "start": "E",
+            "end": "A",
+            "expected_path": true,
+            "error": "ArangoGraphClient.find_path() got an unexpected keyword argument 'start_node_id'",
+            "duration_ms": 0.0,
+            "status": "ERROR"
+          },
+          {
+            "description": "Direct vertical",
+            "start": "B",
+            "end": "H",
+            "expected_path": true,
+            "error": "ArangoGraphClient.find_path() got an unexpected keyword argument 'start_node_id'",
+            "duration_ms": 0.0,
+            "status": "ERROR"
+          },
+          {
+            "description": "Non-existent destination",
+            "start": "A",
+            "end": "Z",
+            "expected_path": false,
+            "error": "ArangoGraphClient.find_path() got an unexpected keyword argument 'start_node_id'",
+            "duration_ms": 0.0,
+            "status": "ERROR"
+          }
+        ],
+        "performance": {
+          "avg_time": 0.0,
+          "total_time": 0.0
+        },
+        "success_rate": 0.0,
+        "status": "FAIL"
+      },
+      "dijkstra": {
+        "tests_passed": 0,
+        "tests_total": 6,
+        "test_details": [
+          {
+            "description": "Long diagonal path",
+            "start": "A",
+            "end": "I",
+            "expected_path": true,
+            "error": "ArangoGraphClient.find_path() got an unexpected keyword argument 'start_node_id'",
+            "duration_ms": 0.0,
+            "status": "ERROR"
+          },
+          {
+            "description": "Direct diagonal",
+            "start": "A",
+            "end": "C",
+            "expected_path": true,
+            "error": "ArangoGraphClient.find_path() got an unexpected keyword argument 'start_node_id'",
+            "duration_ms": 0.0,
+            "status": "ERROR"
+          },
+          {
+            "description": "Corner to corner",
+            "start": "G",
+            "end": "C",
+            "expected_path": true,
+            "error": "ArangoGraphClient.find_path() got an unexpected keyword argument 'start_node_id'",
+            "duration_ms": 0.0,
+            "status": "ERROR"
+          },
+          {
+            "description": "Hub to corner",
+            "start": "E",
+            "end": "A",
+            "expected_path": true,
+            "error": "ArangoGraphClient.find_path() got an unexpected keyword argument 'start_node_id'",
+            "duration_ms": 0.0,
+            "status": "ERROR"
+          },
+          {
+            "description": "Direct vertical",
+            "start": "B",
+            "end": "H",
+            "expected_path": true,
+            "error": "ArangoGraphClient.find_path() got an unexpected keyword argument 'start_node_id'",
+            "duration_ms": 0.0,
+            "status": "ERROR"
+          },
+          {
+            "description": "Non-existent destination",
+            "start": "A",
+            "end": "Z",
+            "expected_path": false,
+            "error": "ArangoGraphClient.find_path() got an unexpected keyword argument 'start_node_id'",
+            "duration_ms": 0.0,
+            "status": "ERROR"
+          }
+        ],
+        "performance": {
+          "avg_time": 0.0,
+          "total_time": 0.0
+        },
+        "success_rate": 0.0,
+        "status": "FAIL"
+      }
+    },
+    "neighbor_discovery": {
+      "tests_passed": 0,
+      "tests_total": 4,
+      "success_rate": 0.0,
+      "status": "FAIL",
+      "test_details": {
+        "E_depth_1": {
+          "description": "Central hub - 1 hop",
+          "node": "E",
+          "max_depth": 1,
+          "error": "ArangoGraphClient.get_neighbors() got an unexpected keyword argument 'max_depth'",
+          "duration_ms": 0.0,
+          "status": "ERROR"
+        },
+        "E_depth_2": {
+          "description": "Central hub - 2 hops",
+          "node": "E",
+          "max_depth": 2,
+          "error": "ArangoGraphClient.get_neighbors() got an unexpected keyword argument 'max_depth'",
+          "duration_ms": 0.0,
+          "status": "ERROR"
+        },
+        "A_depth_1": {
+          "description": "Corner node - 1 hop",
+          "node": "A",
+          "max_depth": 1,
+          "error": "ArangoGraphClient.get_neighbors() got an unexpected keyword argument 'max_depth'",
+          "duration_ms": 0.0,
+          "status": "ERROR"
+        },
+        "A_depth_2": {
+          "description": "Corner node - 2 hops",
+          "node": "A",
+          "max_depth": 2,
+          "error": "ArangoGraphClient.get_neighbors() got an unexpected keyword argument 'max_depth'",
+          "duration_ms": 0.0,
+          "status": "ERROR"
+        }
+      }
+    },
+    "backtracking": {
+      "tests_passed": 0,
+      "tests_total": 3,
+      "success_rate": 0.0,
+      "status": "FAIL",
+      "test_details": {
+        "Simple backtrack": {
+          "name": "Simple backtrack",
+          "description": "Path from A to I should require backtracking in DFS",
+          "error": "ArangoGraphClient.find_path() got an unexpected keyword argument 'start_node_id'",
+          "duration_ms": 0.0,
+          "status": "ERROR"
+        },
+        "Multi-path exploration": {
+          "name": "Multi-path exploration",
+          "description": "Multiple valid paths available, DFS should backtrack when needed",
+          "error": "ArangoGraphClient.find_path() got an unexpected keyword argument 'start_node_id'",
+          "duration_ms": 0.0,
+          "status": "ERROR"
+        },
+        "Dead end avoidance": {
+          "name": "Dead end avoidance",
+          "description": "Path requiring strategic backtracking",
+          "error": "ArangoGraphClient.find_path() got an unexpected keyword argument 'start_node_id'",
+          "duration_ms": 0.0,
+          "status": "ERROR"
+        }
+      }
+    },
+    "graph_traversal": {
+      "tests_passed": 0,
+      "tests_total": 3,
+      "success_rate": 0.0,
+      "status": "FAIL",
+      "test_details": {
+        "E": {
+          "description": "Central hub traversal",
+          "start_node": "E",
+          "error": "ArangoGraphClient.get_neighbors() got an unexpected keyword argument 'max_depth'",
+          "duration_ms": 0.0,
+          "status": "ERROR"
+        },
+        "A": {
+          "description": "Corner traversal",
+          "start_node": "A",
+          "error": "ArangoGraphClient.get_neighbors() got an unexpected keyword argument 'max_depth'",
+          "duration_ms": 0.0,
+          "status": "ERROR"
+        },
+        "G": {
+          "description": "Opposite corner traversal",
+          "start_node": "G",
+          "error": "ArangoGraphClient.get_neighbors() got an unexpected keyword argument 'max_depth'",
+          "duration_ms": 0.0,
+          "status": "ERROR"
+        }
+      }
+    }
+  },
+  "performance": {},
+  "status": "FAIL",
+  "summary": {
+    "tests_passed": 0,
+    "tests_total": 34,
+    "success_rate": 0.0,
+    "overall_status": "FAIL"
+  }
+}

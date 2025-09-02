@@ -1,0 +1,273 @@
+{
+  "timestamp": "20250831T215525Z",
+  "session_id": "session_perf_test_20250831T215525Z",
+  "performance_tests": {
+    "bulk_creation": {
+      "nodes_attempted": 200,
+      "nodes_created": 200,
+      "node_creation_time": 10.033990383148193,
+      "node_creation_rate": 19.932249520180367,
+      "edges_attempted": 400,
+      "edges_created": 400,
+      "edge_creation_time": 20.049128532409668,
+      "edge_creation_rate": 19.95099185250845,
+      "total_time": 30.08311891555786,
+      "status": "PASS"
+    },
+    "query_performance": {
+      "stats": {
+        "path_finding": {
+          "avg_duration_ms": 51.435160636901855,
+          "min_duration_ms": 48.13718795776367,
+          "max_duration_ms": 56.1525821685791,
+          "total_queries": 10,
+          "successful_queries": 10
+        },
+        "neighbor_discovery": {
+          "avg_duration_ms": 50.79458157221476,
+          "min_duration_ms": 46.866416931152344,
+          "max_duration_ms": 60.09483337402344,
+          "total_queries": 12,
+          "successful_queries": 12
+        },
+        "node_retrieval": {
+          "avg_duration_ms": 0.0,
+          "min_duration_ms": 0.0,
+          "max_duration_ms": 0.0,
+          "total_queries": 12,
+          "successful_queries": 0
+        },
+        "edge_retrieval": {
+          "avg_duration_ms": 0.0,
+          "min_duration_ms": 0.0,
+          "max_duration_ms": 0.0,
+          "total_queries": 12,
+          "successful_queries": 0
+        }
+      },
+      "raw_results": {
+        "path_finding": [
+          {
+            "duration_ms": 54.599761962890625,
+            "path_found": true,
+            "path_length": 4
+          },
+          {
+            "duration_ms": 56.1525821685791,
+            "path_found": true,
+            "path_length": 4
+          },
+          {
+            "duration_ms": 53.47490310668945,
+            "path_found": true,
+            "path_length": 4
+          },
+          {
+            "duration_ms": 51.482439041137695,
+            "path_found": true,
+            "path_length": 4
+          },
+          {
+            "duration_ms": 48.13718795776367,
+            "path_found": true,
+            "path_length": 4
+          },
+          {
+            "duration_ms": 51.044464111328125,
+            "path_found": true,
+            "path_length": 4
+          },
+          {
+            "duration_ms": 50.05931854248047,
+            "path_found": true,
+            "path_length": 4
+          },
+          {
+            "duration_ms": 49.73745346069336,
+            "path_found": true,
+            "path_length": 4
+          },
+          {
+            "duration_ms": 49.32379722595215,
+            "path_found": true,
+            "path_length": 4
+          },
+          {
+            "duration_ms": 50.339698791503906,
+            "path_found": true,
+            "path_length": 4
+          }
+        ],
+        "neighbor_discovery": [
+          {
+            "duration_ms": 51.86748504638672,
+            "neighbors_found": 3
+          },
+          {
+            "duration_ms": 49.098968505859375,
+            "neighbors_found": 4
+          },
+          {
+            "duration_ms": 60.09483337402344,
+            "neighbors_found": 3
+          },
+          {
+            "duration_ms": 51.87344551086426,
+            "neighbors_found": 6
+          },
+          {
+            "duration_ms": 46.866416931152344,
+            "neighbors_found": 0
+          },
+          {
+            "duration_ms": 51.663875579833984,
+            "neighbors_found": 4
+          },
+          {
+            "duration_ms": 49.17740821838379,
+            "neighbors_found": 2
+          },
+          {
+            "duration_ms": 49.69358444213867,
+            "neighbors_found": 3
+          },
+          {
+            "duration_ms": 50.03237724304199,
+            "neighbors_found": 4
+          },
+          {
+            "duration_ms": 49.33643341064453,
+            "neighbors_found": 3
+          },
+          {
+            "duration_ms": 50.86541175842285,
+            "neighbors_found": 4
+          },
+          {
+            "duration_ms": 48.964738845825195,
+            "neighbors_found": 1
+          }
+        ],
+        "node_retrieval": [
+          {
+            "duration_ms": 0.0,
+            "error": "ArangoGraphClient.get_nodes() got an unexpected keyword argument 'limit'"
+          },
+          {
+            "duration_ms": 0.0,
+            "error": "ArangoGraphClient.get_nodes() got an unexpected keyword argument 'limit'"
+          },
+          {
+            "duration_ms": 0.0,
+            "error": "ArangoGraphClient.get_nodes() got an unexpected keyword argument 'limit'"
+          },
+          {
+            "duration_ms": 0.0,
+            "error": "ArangoGraphClient.get_nodes() got an unexpected keyword argument 'limit'"
+          },
+          {
+            "duration_ms": 0.0,
+            "error": "ArangoGraphClient.get_nodes() got an unexpected keyword argument 'limit'"
+          },
+          {
+            "duration_ms": 0.0,
+            "error": "ArangoGraphClient.get_nodes() got an unexpected keyword argument 'limit'"
+          },
+          {
+            "duration_ms": 0.0,
+            "error": "ArangoGraphClient.get_nodes() got an unexpected keyword argument 'limit'"
+          },
+          {
+            "duration_ms": 0.0,
+            "error": "ArangoGraphClient.get_nodes() got an unexpected keyword argument 'limit'"
+          },
+          {
+            "duration_ms": 0.0,
+            "error": "ArangoGraphClient.get_nodes() got an unexpected keyword argument 'limit'"
+          },
+          {
+            "duration_ms": 0.0,
+            "error": "ArangoGraphClient.get_nodes() got an unexpected keyword argument 'limit'"
+          },
+          {
+            "duration_ms": 0.0,
+            "error": "ArangoGraphClient.get_nodes() got an unexpected keyword argument 'limit'"
+          },
+          {
+            "duration_ms": 0.0,
+            "error": "ArangoGraphClient.get_nodes() got an unexpected keyword argument 'limit'"
+          }
+        ],
+        "edge_retrieval": [
+          {
+            "duration_ms": 0.0,
+            "error": "ArangoGraphClient.get_edges() got an unexpected keyword argument 'limit'"
+          },
+          {
+            "duration_ms": 0.0,
+            "error": "ArangoGraphClient.get_edges() got an unexpected keyword argument 'limit'"
+          },
+          {
+            "duration_ms": 0.0,
+            "error": "ArangoGraphClient.get_edges() got an unexpected keyword argument 'limit'"
+          },
+          {
+            "duration_ms": 0.0,
+            "error": "ArangoGraphClient.get_edges() got an unexpected keyword argument 'limit'"
+          },
+          {
+            "duration_ms": 0.0,
+            "error": "ArangoGraphClient.get_edges() got an unexpected keyword argument 'limit'"
+          },
+          {
+            "duration_ms": 0.0,
+            "error": "ArangoGraphClient.get_edges() got an unexpected keyword argument 'limit'"
+          },
+          {
+            "duration_ms": 0.0,
+            "error": "ArangoGraphClient.get_edges() got an unexpected keyword argument 'limit'"
+          },
+          {
+            "duration_ms": 0.0,
+            "error": "ArangoGraphClient.get_edges() got an unexpected keyword argument 'limit'"
+          },
+          {
+            "duration_ms": 0.0,
+            "error": "ArangoGraphClient.get_edges() got an unexpected keyword argument 'limit'"
+          },
+          {
+            "duration_ms": 0.0,
+            "error": "ArangoGraphClient.get_edges() got an unexpected keyword argument 'limit'"
+          },
+          {
+            "duration_ms": 0.0,
+            "error": "ArangoGraphClient.get_edges() got an unexpected keyword argument 'limit'"
+          },
+          {
+            "duration_ms": 0.0,
+            "error": "ArangoGraphClient.get_edges() got an unexpected keyword argument 'limit'"
+          }
+        ]
+      },
+      "status": "PASS"
+    },
+    "concurrent_operations": {
+      "operations_attempted": 5,
+      "operations_completed": 5,
+      "operations_failed": 0,
+      "avg_duration_ms": 24.21116828918457,
+      "max_duration_ms": 58.498382568359375,
+      "min_duration_ms": 14.669418334960938,
+      "status": "PASS",
+      "success_rate": 100.0
+    }
+  },
+  "scalability": {},
+  "status": "PASS",
+  "summary": {
+    "tests_passed": 3,
+    "tests_total": 3,
+    "success_rate": 100.0,
+    "overall_status": "PASS"
+  }
+}

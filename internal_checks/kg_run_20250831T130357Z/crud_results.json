@@ -1,0 +1,51 @@
+{
+  "timestamp": "20250831T130357Z",
+  "session_id": "session_test_kg_20250831T130357Z",
+  "operations": {
+    "create": {
+      "nodes_attempted": 50,
+      "nodes_created": 50,
+      "nodes_failed": 0,
+      "edges_attempted": 75,
+      "edges_created": 75,
+      "edges_failed": 0,
+      "duration_seconds": 6.258525,
+      "failed_items": {
+        "nodes": [],
+        "edges": []
+      },
+      "status": "PASS"
+    },
+    "read": {
+      "nodes_retrieved": 50,
+      "edges_retrieved": 75,
+      "nodes_verified": 10,
+      "edges_verified": 10,
+      "duration_seconds": 0.121324,
+      "status": "PASS"
+    },
+    "update": {
+      "node_updated": "test_node_000",
+      "update_successful": false,
+      "verification_passed": false,
+      "duration_seconds": 0.184488,
+      "status": "FAIL"
+    },
+    "delete": {
+      "node_deleted": "test_node_049",
+      "deletion_result": true,
+      "node_still_exists": false,
+      "remaining_nodes": 49,
+      "duration_seconds": 0.117981,
+      "status": "PASS"
+    }
+  },
+  "performance": {},
+  "status": "PASS",
+  "summary": {
+    "tests_passed": 3,
+    "tests_total": 4,
+    "success_rate": 75.0,
+    "overall_status": "PASS"
+  }
+}
