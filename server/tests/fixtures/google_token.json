@@ -1,0 +1,8 @@
+{
+  "access_token": "ya29.mock_access_token_example",
+  "expires_in": 3599,
+  "refresh_token": "1//mock_refresh_token_example",
+  "scope": "openid https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile",
+  "token_type": "Bearer",
+  "id_token": "eyJhbGciOiJSUzI1NiIsImtpZCI6ImMxZDJmYWM0M2Y4YzQ5MDJhOTQ5ZGNhMjE5ZTJlYTE3YzNlNWU5ZGUiLCJ0eXAiOiJKV1QifQ.eyJpc3MiOiJhY2NvdW50cy5nb29nbGUuY29tIiwiYXpwIjoibW9ja19jbGllbnRfaWQiLCJhdWQiOiJtb2NrX2NsaWVudF9pZCIsInN1YiI6IjEyMzQ1Njc4OSIsImVtYWlsIjoidGVzdEBleGFtcGxlLmNvbSIsImVtYWlsX3ZlcmlmaWVkIjp0cnVlLCJhdF9oYXNoIjoibW9ja19oYXNoIiwibmFtZSI6IlRlc3QgVXNlciIsInBpY3R1cmUiOiJodHRwczovL2V4YW1wbGUuY29tL2F2YXRhci5qcGciLCJnaXZlbl9uYW1lIjoiVGVzdCIsImZhbWlseV9uYW1lIjoiVXNlciIsImxvY2FsZSI6ImVuIiwiaWF0IjoxNjkwMDAwMDAwLCJleHAiOjE2OTAwMDM2MDB9.mock_signature"
+}

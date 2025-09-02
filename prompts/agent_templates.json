@@ -1,0 +1,774 @@
+{
+  "global_prompt_rules": {
+    "response_format": "Return only a single JSON object matching the schema. Do not include commentary, code fences, or explanations.",
+    "error_handling": "If the input is ambiguous or incomplete, include an 'errors' field in your response with specific issues.",
+    "pii_detection": "Never include personally identifiable information (PII) in responses. Flag any PII found in input.",
+    "retry_instructions": "If JSON validation fails, retry with simpler structure while preserving required fields.",
+    "call_metadata": "Include call metadata with timestamp and agent_type in your response for logging purposes."
+  },
+  
+  "agent_templates": {
+    "session_manager": {
+      "system_role": "You are a Session Manager assistant for Human-AI Co-Creation. Manage user sessions, preferences, and orchestrate other agents.",
+      "temperature": 0.1,
+      "output_schema": {
+        "type": "object",
+        "required": ["action", "status", "call_metadata"],
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": ["create_session", "update_session", "trigger_agents", "save_snapshot", "policy_check"]
+          },
+          "status": {
+            "type": "string",
+            "enum": ["success", "error", "pending"]
+          },
+          "session_data": {
+            "type": "object",
+            "properties": {
+              "session_id": {"type": "string"},
+              "user_id": {"type": "string"},
+              "preferences": {"type": "object"}
+            }
+          },
+          "agent_instructions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "agent_type": {"type": "string"},
+                "action": {"type": "string"},
+                "parameters": {"type": "object"}
+              }
+            }
+          },
+          "errors": {
+            "type": "array",
+            "items": {"type": "string"}
+          },
+          "call_metadata": {
+            "type": "object",
+            "required": ["timestamp", "agent_type"],
+            "properties": {
+              "timestamp": {"type": "string"},
+              "agent_type": {"type": "string"},
+              "processing_time_ms": {"type": "number"}
+            }
+          }
+        }
+      },
+      "few_shot_examples": [
+        {
+          "input": {
+            "action": "create_session",
+            "user_id": "user_123",
+            "topic": "story",
+            "initial_content": "Detective Sarah walked into the apartment."
+          },
+          "output": {
+            "action": "create_session",
+            "status": "success",
+            "session_data": {
+              "session_id": "session_abc",
+              "user_id": "user_123",
+              "preferences": {"mode": "balanced", "suggestion_policy": "on_demand"}
+            },
+            "agent_instructions": [
+              {
+                "agent_type": "perception",
+                "action": "analyze_content",
+                "parameters": {"content": "Detective Sarah walked into the apartment.", "topic": "story"}
+              }
+            ],
+            "errors": [],
+            "call_metadata": {
+              "timestamp": "2024-01-01T10:00:00Z",
+              "agent_type": "session_manager",
+              "processing_time_ms": 150
+            }
+          }
+        }
+      ]
+    },
+    
+    "perception": {
+      "system_role": "You are a Perception Agent for content analysis. Extract entities, events, tone, POV, and metadata from content.",
+      "temperature": 0.0,
+      "output_schema": {
+        "type": "object",
+        "required": ["entities", "events", "metadata", "call_metadata"],
+        "properties": {
+          "entities": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["name", "type"],
+              "properties": {
+                "name": {"type": "string", "minLength": 1},
+                "type": {"type": "string", "enum": ["character", "location", "object", "concept"]},
+                "attributes": {"type": "object"},
+                "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+              }
+            }
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["summary", "timestamp_in_story"],
+              "properties": {
+                "summary": {"type": "string", "minLength": 1},
+                "timestamp_in_story": {"type": "string"},
+                "participants": {"type": "array", "items": {"type": "string"}},
+                "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+              }
+            }
+          },
+          "metadata": {
+            "type": "object",
+            "required": ["pov", "tense", "tone"],
+            "properties": {
+              "pov": {"type": "string", "enum": ["first", "second", "third", "mixed"]},
+              "tense": {"type": "string", "enum": ["past", "present", "future", "mixed"]},
+              "tone": {"type": "string"},
+              "word_count": {"type": "integer", "minimum": 0},
+              "readability_score": {"type": "number", "minimum": 0, "maximum": 100},
+              "topic_summary": {"type": "string"}
+            }
+          },
+          "flags": {
+            "type": "object",
+            "properties": {
+              "pii_detected": {"type": "array", "items": {"type": "string"}},
+              "content_warnings": {"type": "array", "items": {"type": "string"}},
+              "quality_issues": {"type": "array", "items": {"type": "string"}}
+            }
+          },
+          "call_metadata": {
+            "type": "object",
+            "required": ["timestamp", "agent_type"],
+            "properties": {
+              "timestamp": {"type": "string"},
+              "agent_type": {"type": "string"},
+              "processing_time_ms": {"type": "number"}
+            }
+          }
+        }
+      },
+      "few_shot_examples": [
+        {
+          "input": {
+            "content": "Detective Sarah walked into the dimly lit apartment, her hand instinctively moving to her holster.",
+            "topic": "story"
+          },
+          "output": {
+            "entities": [
+              {
+                "name": "Detective Sarah",
+                "type": "character",
+                "attributes": {"role": "protagonist", "profession": "detective"},
+                "confidence": 0.95
+              },
+              {
+                "name": "apartment",
+                "type": "location",
+                "attributes": {"lighting": "dimly lit"},
+                "confidence": 0.9
+              },
+              {
+                "name": "holster",
+                "type": "object",
+                "attributes": {"purpose": "weapon storage"},
+                "confidence": 0.85
+              }
+            ],
+            "events": [
+              {
+                "summary": "Detective Sarah enters the apartment",
+                "timestamp_in_story": "current",
+                "participants": ["Detective Sarah"],
+                "confidence": 0.95
+              },
+              {
+                "summary": "Detective moves hand toward holster",
+                "timestamp_in_story": "current",
+                "participants": ["Detective Sarah"],
+                "confidence": 0.9
+              }
+            ],
+            "metadata": {
+              "pov": "third",
+              "tense": "past",
+              "tone": "suspenseful",
+              "word_count": 18,
+              "readability_score": 75,
+              "topic_summary": "Detective entering a potentially dangerous situation"
+            },
+            "flags": {
+              "pii_detected": [],
+              "content_warnings": ["potential violence"],
+              "quality_issues": []
+            },
+            "call_metadata": {
+              "timestamp": "2024-01-01T10:00:00Z",
+              "agent_type": "perception",
+              "processing_time_ms": 200
+            }
+          }
+        }
+      ]
+    },
+    
+    "planner": {
+      "system_role": "You are a Planner/Generator Agent. Create 1-3 distinct continuation branches for content based on constraints and context.",
+      "temperature": 0.3,
+      "output_schema": {
+        "type": "object",
+        "required": ["branches", "call_metadata"],
+        "properties": {
+          "branches": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 3,
+            "items": {
+              "type": "object",
+              "required": ["title", "content", "style", "events"],
+              "properties": {
+                "title": {"type": "string", "minLength": 1, "maxLength": 100},
+                "content": {"type": "string", "minLength": 10},
+                "style": {"type": "string", "enum": ["conservative", "balanced", "creative"]},
+                "events": {
+                  "type": "array",
+                  "maxItems": 4,
+                  "items": {
+                    "type": "object",
+                    "required": ["summary", "participants"],
+                    "properties": {
+                      "summary": {"type": "string"},
+                      "participants": {"type": "array", "items": {"type": "string"}},
+                      "causality": {"type": "string"}
+                    }
+                  }
+                },
+                "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+              }
+            }
+          },
+          "constraints_preserved": {
+            "type": "object",
+            "properties": {
+              "pov_maintained": {"type": "boolean"},
+              "character_consistency": {"type": "boolean"},
+              "tone_consistency": {"type": "boolean"},
+              "logical_coherence": {"type": "boolean"}
+            }
+          },
+          "flags": {
+            "type": "object",
+            "properties": {
+              "unverified_facts": {"type": "array", "items": {"type": "string"}},
+              "new_characters": {"type": "array", "items": {"type": "string"}},
+              "contradictions": {"type": "array", "items": {"type": "string"}}
+            }
+          },
+          "call_metadata": {
+            "type": "object",
+            "required": ["timestamp", "agent_type"],
+            "properties": {
+              "timestamp": {"type": "string"},
+              "agent_type": {"type": "string"},
+              "processing_time_ms": {"type": "number"}
+            }
+          }
+        }
+      },
+      "few_shot_examples": [
+        {
+          "input": {
+            "story_so_far": "Detective Sarah walked into the dimly lit apartment, her hand instinctively moving to her holster.",
+            "topic": "story",
+            "constraints": {"pov": "third", "tense": "past", "preserve_characters": true, "max_events": 3},
+            "characters": [{"name": "Detective Sarah", "traits": ["cautious", "experienced"]}]
+          },
+          "output": {
+            "branches": [
+              {
+                "title": "Cautious Investigation",
+                "content": "She paused at the threshold, listening for any sounds within. The floorboards creaked under her weight as she stepped carefully inside, her eyes scanning the shadows for movement.",
+                "style": "conservative",
+                "events": [
+                  {
+                    "summary": "Detective pauses to listen",
+                    "participants": ["Detective Sarah"],
+                    "causality": "Follows from entering dangerous location"
+                  },
+                  {
+                    "summary": "Detective moves cautiously inside",
+                    "participants": ["Detective Sarah"],
+                    "causality": "Continuation of investigation procedure"
+                  }
+                ],
+                "confidence": 0.9
+              },
+              {
+                "title": "Discovery of Evidence",
+                "content": "The apartment seemed empty, but something caught her eye – a photograph lying face-down on the coffee table. Sarah approached it carefully, her training telling her this might be the clue she'd been looking for.",
+                "style": "balanced",
+                "events": [
+                  {
+                    "summary": "Detective notices photograph",
+                    "participants": ["Detective Sarah"],
+                    "causality": "Evidence discovery during investigation"
+                  },
+                  {
+                    "summary": "Detective approaches evidence cautiously",
+                    "participants": ["Detective Sarah"],
+                    "causality": "Professional training response"
+                  }
+                ],
+                "confidence": 0.85
+              }
+            ],
+            "constraints_preserved": {
+              "pov_maintained": true,
+              "character_consistency": true,
+              "tone_consistency": true,
+              "logical_coherence": true
+            },
+            "flags": {
+              "unverified_facts": [],
+              "new_characters": [],
+              "contradictions": []
+            },
+            "call_metadata": {
+              "timestamp": "2024-01-01T10:00:00Z",
+              "agent_type": "planner",
+              "processing_time_ms": 350
+            }
+          }
+        }
+      ]
+    },
+    
+    "graph_manager": {
+      "system_role": "You are a Graph Manager Agent. Build and maintain knowledge graphs of entities, events, and relationships.",
+      "temperature": 0.0,
+      "output_schema": {
+        "type": "object",
+        "required": ["nodes", "edges", "graph_stats", "call_metadata"],
+        "properties": {
+          "nodes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id", "type", "label", "importance_score"],
+              "properties": {
+                "id": {"type": "string"},
+                "type": {"type": "string", "enum": ["entity", "event"]},
+                "label": {"type": "string"},
+                "attributes": {"type": "object"},
+                "importance_score": {"type": "number", "minimum": 0, "maximum": 1},
+                "embedding": {"type": "array", "items": {"type": "number"}}
+              }
+            }
+          },
+          "edges": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["from_id", "to_id", "relationship_type", "strength"],
+              "properties": {
+                "from_id": {"type": "string"},
+                "to_id": {"type": "string"},
+                "relationship_type": {"type": "string", "enum": ["causal", "temporal", "co_ref", "attribute", "involves", "located_in"]},
+                "strength": {"type": "number", "minimum": 0, "maximum": 1},
+                "metadata": {"type": "object"}
+              }
+            }
+          },
+          "graph_stats": {
+            "type": "object",
+            "required": ["total_nodes", "total_edges", "graph_density"],
+            "properties": {
+              "total_nodes": {"type": "integer", "minimum": 0},
+              "total_edges": {"type": "integer", "minimum": 0},
+              "graph_density": {"type": "number", "minimum": 0, "maximum": 1},
+              "connected_components": {"type": "integer", "minimum": 0},
+              "pruning_suggestions": {"type": "array", "items": {"type": "string"}}
+            }
+          },
+          "operations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "operation": {"type": "string", "enum": ["add", "update", "merge", "prune", "archive"]},
+                "target_id": {"type": "string"},
+                "reason": {"type": "string"}
+              }
+            }
+          },
+          "call_metadata": {
+            "type": "object",
+            "required": ["timestamp", "agent_type"],
+            "properties": {
+              "timestamp": {"type": "string"},
+              "agent_type": {"type": "string"},
+              "processing_time_ms": {"type": "number"}
+            }
+          }
+        }
+      },
+      "few_shot_examples": [
+        {
+          "input": {
+            "entities": [
+              {"name": "Detective Sarah", "type": "character", "attributes": {"role": "protagonist"}},
+              {"name": "apartment", "type": "location", "attributes": {"lighting": "dimly lit"}}
+            ],
+            "events": [
+              {"summary": "Detective Sarah enters apartment", "participants": ["Detective Sarah"]}
+            ]
+          },
+          "output": {
+            "nodes": [
+              {
+                "id": "entity_detective_sarah",
+                "type": "entity",
+                "label": "Detective Sarah",
+                "attributes": {"role": "protagonist", "profession": "detective"},
+                "importance_score": 1.0,
+                "embedding": [0.1, 0.2, 0.3]
+              },
+              {
+                "id": "entity_apartment",
+                "type": "entity",
+                "label": "apartment",
+                "attributes": {"lighting": "dimly lit", "type": "location"},
+                "importance_score": 0.7,
+                "embedding": [0.4, 0.5, 0.6]
+              },
+              {
+                "id": "event_enters_apartment",
+                "type": "event",
+                "label": "Detective enters apartment",
+                "attributes": {"action": "enters", "location": "apartment"},
+                "importance_score": 0.8,
+                "embedding": [0.7, 0.8, 0.9]
+              }
+            ],
+            "edges": [
+              {
+                "from_id": "entity_detective_sarah",
+                "to_id": "event_enters_apartment",
+                "relationship_type": "involves",
+                "strength": 1.0,
+                "metadata": {"role": "agent"}
+              },
+              {
+                "from_id": "event_enters_apartment",
+                "to_id": "entity_apartment",
+                "relationship_type": "located_in",
+                "strength": 1.0,
+                "metadata": {"spatial_relationship": "inside"}
+              }
+            ],
+            "graph_stats": {
+              "total_nodes": 3,
+              "total_edges": 2,
+              "graph_density": 0.33,
+              "connected_components": 1,
+              "pruning_suggestions": []
+            },
+            "operations": [
+              {
+                "operation": "add",
+                "target_id": "entity_detective_sarah",
+                "reason": "New primary character identified"
+              }
+            ],
+            "call_metadata": {
+              "timestamp": "2024-01-01T10:00:00Z",
+              "agent_type": "graph_manager",
+              "processing_time_ms": 180
+            }
+          }
+        }
+      ]
+    },
+    
+    "verifier": {
+      "system_role": "You are a Verifier Agent for consistency and error checking. Validate grammar, POV, character consistency, and factual accuracy.",
+      "temperature": 0.0,
+      "output_schema": {
+        "type": "object",
+        "required": ["validation_results", "call_metadata"],
+        "properties": {
+          "validation_results": {
+            "type": "object",
+            "required": ["grammar_score", "consistency_checks", "overall_validity"],
+            "properties": {
+              "grammar_score": {"type": "number", "minimum": 0, "maximum": 100},
+              "consistency_checks": {
+                "type": "object",
+                "required": ["pov_consistent", "tense_consistent", "character_consistent"],
+                "properties": {
+                  "pov_consistent": {"type": "boolean"},
+                  "tense_consistent": {"type": "boolean"},
+                  "character_consistent": {"type": "boolean"},
+                  "tone_consistent": {"type": "boolean"},
+                  "logical_coherent": {"type": "boolean"}
+                }
+              },
+              "overall_validity": {"type": "boolean"}
+            }
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["type", "description", "severity"],
+              "properties": {
+                "type": {"type": "string", "enum": ["grammar", "pov", "tense", "character", "logic", "fact"]},
+                "description": {"type": "string"},
+                "severity": {"type": "string", "enum": ["low", "medium", "high", "critical"]},
+                "suggestion": {"type": "string"},
+                "line_number": {"type": "integer"}
+              }
+            }
+          },
+          "corrections": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "original": {"type": "string"},
+                "corrected": {"type": "string"},
+                "reason": {"type": "string"}
+              }
+            }
+          },
+          "fact_checks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "statement": {"type": "string"},
+                "verified": {"type": "boolean"},
+                "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+                "source": {"type": "string"}
+              }
+            }
+          },
+          "call_metadata": {
+            "type": "object",
+            "required": ["timestamp", "agent_type"],
+            "properties": {
+              "timestamp": {"type": "string"},
+              "agent_type": {"type": "string"},
+              "processing_time_ms": {"type": "number"}
+            }
+          }
+        }
+      },
+      "few_shot_examples": [
+        {
+          "input": {
+            "content": "Detective Sarah walked into the apartment. She pauses at the threshold, listening for sounds.",
+            "constraints": {"pov": "third", "tense": "past"},
+            "characters": [{"name": "Detective Sarah", "traits": ["cautious"]}]
+          },
+          "output": {
+            "validation_results": {
+              "grammar_score": 85,
+              "consistency_checks": {
+                "pov_consistent": true,
+                "tense_consistent": false,
+                "character_consistent": true,
+                "tone_consistent": true,
+                "logical_coherent": true
+              },
+              "overall_validity": false
+            },
+            "errors": [
+              {
+                "type": "tense",
+                "description": "Tense shift from past to present in second sentence",
+                "severity": "medium",
+                "suggestion": "Change 'pauses' to 'paused' to maintain past tense",
+                "line_number": 2
+              }
+            ],
+            "corrections": [
+              {
+                "original": "She pauses at the threshold",
+                "corrected": "She paused at the threshold",
+                "reason": "Maintain consistent past tense throughout"
+              }
+            ],
+            "fact_checks": [
+              {
+                "statement": "Detective has cautious behavior",
+                "verified": true,
+                "confidence": 0.9,
+                "source": "character_profile"
+              }
+            ],
+            "call_metadata": {
+              "timestamp": "2024-01-01T10:00:00Z",
+              "agent_type": "verifier",
+              "processing_time_ms": 120
+            }
+          }
+        }
+      ]
+    },
+    
+    "evaluator": {
+      "system_role": "You are an Evaluator Agent. Score and rank content branches on coherence, quality, and acceptability.",
+      "temperature": 0.0,
+      "output_schema": {
+        "type": "object",
+        "required": ["branch_scores", "ranking", "call_metadata"],
+        "properties": {
+          "branch_scores": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["branch_id", "scores", "overall_score"],
+              "properties": {
+                "branch_id": {"type": "string"},
+                "scores": {
+                  "type": "object",
+                  "required": ["coherence", "character_consistency", "grammar", "novelty", "factual_accuracy"],
+                  "properties": {
+                    "coherence": {"type": "number", "minimum": 0, "maximum": 10},
+                    "character_consistency": {"type": "number", "minimum": 0, "maximum": 10},
+                    "grammar": {"type": "number", "minimum": 0, "maximum": 10},
+                    "novelty": {"type": "number", "minimum": 0, "maximum": 10},
+                    "factual_accuracy": {"type": "number", "minimum": 0, "maximum": 10},
+                    "causal_strength": {"type": "number", "minimum": 0, "maximum": 10}
+                  }
+                },
+                "overall_score": {"type": "number", "minimum": 0, "maximum": 100},
+                "explanation": {"type": "string"}
+              }
+            }
+          },
+          "ranking": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["rank", "branch_id", "score", "recommendation"],
+              "properties": {
+                "rank": {"type": "integer", "minimum": 1},
+                "branch_id": {"type": "string"},
+                "score": {"type": "number"},
+                "recommendation": {"type": "string", "enum": ["highly_recommended", "recommended", "acceptable", "needs_improvement", "reject"]}
+              }
+            }
+          },
+          "weights_used": {
+            "type": "object",
+            "properties": {
+              "coherence": {"type": "number"},
+              "character_consistency": {"type": "number"},
+              "grammar": {"type": "number"},
+              "novelty": {"type": "number"},
+              "factual_accuracy": {"type": "number"},
+              "causal_strength": {"type": "number"}
+            }
+          },
+          "call_metadata": {
+            "type": "object",
+            "required": ["timestamp", "agent_type"],
+            "properties": {
+              "timestamp": {"type": "string"},
+              "agent_type": {"type": "string"},
+              "processing_time_ms": {"type": "number"}
+            }
+          }
+        }
+      },
+      "few_shot_examples": [
+        {
+          "input": {
+            "branches": [
+              {
+                "id": "branch_1",
+                "title": "Cautious Investigation", 
+                "content": "She paused at the threshold, listening for sounds..."
+              },
+              {
+                "id": "branch_2",
+                "title": "Discovery of Evidence",
+                "content": "The apartment seemed empty, but something caught her eye..."
+              }
+            ],
+            "validation_results": [
+              {"branch_id": "branch_1", "grammar_score": 95, "consistency": true},
+              {"branch_id": "branch_2", "grammar_score": 88, "consistency": true}
+            ]
+          },
+          "output": {
+            "branch_scores": [
+              {
+                "branch_id": "branch_1",
+                "scores": {
+                  "coherence": 9.2,
+                  "character_consistency": 9.5,
+                  "grammar": 9.5,
+                  "novelty": 7.0,
+                  "factual_accuracy": 9.0,
+                  "causal_strength": 8.5
+                },
+                "overall_score": 87.8,
+                "explanation": "Strong character consistency and logical flow, but somewhat predictable"
+              },
+              {
+                "branch_id": "branch_2",
+                "scores": {
+                  "coherence": 8.8,
+                  "character_consistency": 9.0,
+                  "grammar": 8.8,
+                  "novelty": 8.5,
+                  "factual_accuracy": 8.0,
+                  "causal_strength": 8.2
+                },
+                "overall_score": 85.1,
+                "explanation": "Good plot development with new evidence, minor grammar issues"
+              }
+            ],
+            "ranking": [
+              {
+                "rank": 1,
+                "branch_id": "branch_1",
+                "score": 87.8,
+                "recommendation": "highly_recommended"
+              },
+              {
+                "rank": 2,
+                "branch_id": "branch_2", 
+                "score": 85.1,
+                "recommendation": "recommended"
+              }
+            ],
+            "weights_used": {
+              "coherence": 0.25,
+              "character_consistency": 0.25,
+              "grammar": 0.15,
+              "novelty": 0.15,
+              "factual_accuracy": 0.10,
+              "causal_strength": 0.10
+            },
+            "call_metadata": {
+              "timestamp": "2024-01-01T10:00:00Z",
+              "agent_type": "evaluator",
+              "processing_time_ms": 250
+            }
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,223 @@
+"""
+Main Application - Human-AI Co-Creation System
+FastAPI application with CORS support and error handling
+"""
+
+import asyncio
+import logging
+from contextlib import asynccontextmanager
+from typing import Dict, Any
+from pathlib import Path
+
+# Load environment variables first
+try:
+    from dotenv import load_dotenv
+    
+    env_path = Path(__file__).parent / ".env"
+    load_dotenv(dotenv_path=env_path, verbose=True)
+except ImportError:
+    print("⚠️ python-dotenv not available")
+
+try:
+    from fastapi import FastAPI, HTTPException
+    from fastapi.middleware.cors import CORSMiddleware
+    from fastapi.responses import JSONResponse
+
+    FASTAPI_AVAILABLE = True
+except ImportError:
+    FASTAPI_AVAILABLE = False
+
+    # Create mock classes for development
+    class FastAPI:
+        def __init__(self, *args, **kwargs):
+            self.routes = []
+
+        def include_router(self, router):
+            pass
+
+        def add_middleware(self, middleware, **kwargs):
+            pass
+
+
+from .server_config import ServerConfig
+from .utils.logging_cfg import setup_logging, get_api_logger
+
+# Initialize logging
+setup_logging()
+logger = get_api_logger("main")
+
+# Server configuration
+config = ServerConfig()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan manager"""
+    # Startup
+    logger.info("Starting Human-AI Co-Creation System")
+    logger.info(f"Server config: LLM={config.llm_provider}, DB={config.database_mode}")
+
+    try:
+        # Initialize services
+        await initialize_services()
+        logger.info("Services initialized successfully")
+
+        yield
+
+    except Exception as e:
+        logger.error(f"Service initialization failed: {e}")
+        yield
+
+    finally:
+        # Shutdown
+        logger.info("Shutting down Human-AI Co-Creation System")
+        await cleanup_services()
+
+
+async def initialize_services():
+    """Initialize application services"""
+    # Test database connections
+    try:
+        if config.database_mode == "arangodb":
+            from .database.arango_client import create_arango_client
+
+            client = await create_arango_client(config.get_database_config())
+            await client.test_connection()
+            logger.info("ArangoDB connection successful")
+
+        elif config.database_mode == "mongodb":
+            from .database.mongo_client import create_mongo_client
+
+            client = await create_mongo_client(config.get_database_config())
+            await client.test_connection()
+            logger.info("MongoDB connection successful")
+
+        else:
+            from .database.json_fallback import create_json_client
+
+            client = await create_json_client(config.get_database_config())
+            logger.info("JSON fallback storage initialized")
+
+    except Exception as e:
+        logger.warning(f"Database initialization failed, using fallbacks: {e}")
+
+    # Test LLM provider
+    try:
+        from .llm_provider import AsyncLLMProvider
+
+        llm = AsyncLLMProvider(config)
+        await llm.test_connection()
+        logger.info(f"LLM provider {config.llm_provider} connection successful")
+
+    except Exception as e:
+        logger.warning(f"LLM provider initialization failed: {e}")
+
+
+async def cleanup_services():
+    """Cleanup application services"""
+    # Close database connections, cleanup resources, etc.
+    logger.info("Services cleaned up")
+
+
+# Create FastAPI application
+if FASTAPI_AVAILABLE:
+    app = FastAPI(
+        title="Human-AI Co-Creation System",
+        description="AI-powered collaborative content creation system for overcoming writer's block",
+        version="1.0.0",
+        lifespan=lifespan,
+    )
+
+    # CORS middleware
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],  # Configure appropriately for production
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    # Include API routes
+    try:
+        from .api import router
+
+        app.include_router(router)
+        logger.info("API routes registered")
+    except ImportError as e:
+        logger.error(f"Failed to import API routes: {e}")
+
+    @app.exception_handler(HTTPException)
+    async def http_exception_handler(request, exc):
+        """Handle HTTP exceptions"""
+        logger.warning(f"HTTP exception: {exc.status_code} - {exc.detail}")
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"error": exc.detail, "status_code": exc.status_code},
+        )
+
+    @app.exception_handler(Exception)
+    async def general_exception_handler(request, exc):
+        """Handle general exceptions"""
+        logger.error(f"Unhandled exception: {exc}", exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={"error": "Internal server error", "status_code": 500},
+        )
+
+    @app.get("/")
+    async def root():
+        """Root endpoint"""
+        return {
+            "message": "Human-AI Co-Creation System",
+            "version": "1.0.0",
+            "status": "running",
+            "docs": "/docs",
+        }
+
+else:
+    # Fallback for when FastAPI is not available
+    logger.warning("FastAPI not available - running in fallback mode")
+
+    class MockApp:
+        def __init__(self):
+            self.title = "Human-AI Co-Creation System (Fallback)"
+            self.version = "1.0.0"
+
+        async def start_server(self, host="localhost", port=8000):
+            """Start a simple server"""
+            logger.info(f"Would start server on {host}:{port}")
+            logger.info("Install FastAPI and uvicorn to run the full server")
+
+            # Keep running
+            try:
+                while True:
+                    await asyncio.sleep(1)
+            except KeyboardInterrupt:
+                logger.info("Server stopped")
+
+    app = MockApp()
+
+
+async def run_development_server():
+    """Run development server"""
+    if FASTAPI_AVAILABLE:
+        try:
+            import uvicorn
+
+            logger.info("Starting development server with uvicorn")
+            uvicorn.run(
+                "server.main:app",
+                host="localhost",
+                port=8000,
+                reload=True,
+                log_level="info",
+            )
+        except ImportError:
+            logger.error("uvicorn not installed - install with: pip install uvicorn")
+    else:
+        await app.start_server()
+
+
+if __name__ == "__main__":
+    # Run development server
+    asyncio.run(run_development_server())

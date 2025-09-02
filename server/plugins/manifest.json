@@ -1,0 +1,70 @@
+{
+  "plugins": [
+    {
+      "id": "example_plugin",
+      "version": "0.1.0",
+      "enabled": false,
+      "entrypoint": "plugins.example_plugin:apply",
+      "description": "Example plugin for demonstration - adds custom greeting function",
+      "compat": {
+        "schema_version": "1.0",
+        "min_server": "0.1.0"
+      },
+      "capabilities": [
+        "custom_endpoints",
+        "prompt_modification",
+        "safe_rollback"
+      ],
+      "author": "Human-AI Co-Creation System",
+      "rollback_entrypoint": "plugins.example_plugin:rollback"
+    },
+    {
+      "id": "story_enhancer_plugin",
+      "version": "0.2.0",
+      "enabled": false,
+      "entrypoint": "plugins.story_enhancer:apply",
+      "description": "Enhances story generation with additional creative prompts and character development",
+      "compat": {
+        "schema_version": "1.0",
+        "min_server": "0.1.0"
+      },
+      "capabilities": [
+        "prompt_enhancement",
+        "character_generation",
+        "creative_expansion"
+      ],
+      "author": "Human-AI Co-Creation System",
+      "rollback_entrypoint": "plugins.story_enhancer:rollback"
+    },
+    {
+      "id": "safety_filter_plugin",
+      "version": "0.1.5",
+      "enabled": false,
+      "entrypoint": "plugins.safety_filter:apply",
+      "description": "Advanced safety filtering for content generation with configurable policies",
+      "compat": {
+        "schema_version": "1.0",
+        "min_server": "0.1.0"
+      },
+      "capabilities": [
+        "content_filtering",
+        "policy_enforcement",
+        "safety_scoring"
+      ],
+      "author": "Human-AI Co-Creation System",
+      "rollback_entrypoint": "plugins.safety_filter:rollback"
+    }
+  ],
+  "plugin_system": {
+    "version": "1.0",
+    "max_concurrent_plugins": 10,
+    "sandbox_mode": true,
+    "backup_retention_days": 30,
+    "hot_reload_enabled": true
+  },
+  "manifest_metadata": {
+    "created_at": "2025-08-31T00:00:00Z",
+    "last_modified": "2025-08-31T00:00:00Z",
+    "schema_version": "1.0"
+  }
+}

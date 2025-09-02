@@ -1,0 +1,118 @@
+# FastAPI and Web Framework
+fastapi==0.116.1
+uvicorn[standard]==0.30.0
+python-multipart==0.0.20
+starlette==0.47.3
+
+# Authentication and Security
+authlib==1.6.3
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+httpx>=0.23.0  # Fixed vulnerability CVE-2021-41945
+
+# Database
+motor==3.7.1
+pymongo==4.14.1
+aioredis==2.0.1
+
+# ArangoDB
+python-arango==8.1.0
+aioarango==1.0.0  # Updated to latest version
+setuptools<81  # Pin to avoid pkg_resources deprecation warning
+
+# Machine Learning and NLP
+sentence-transformers==3.0.1
+spacy==3.7.5
+nltk==3.9.1
+torch>=2.6.0  # Fixed vulnerabilities CVE-2025-32434, CVE-2025-3730
+transformers==4.44.0
+
+# Vector Database
+chromadb==0.5.5
+faiss-cpu==1.8.0
+
+# LLM Providers
+langchain==0.2.16
+langchain-huggingface==0.0.3
+langchain-google-genai==1.0.10
+langchain-openai==0.1.23
+langchain-groq==0.1.9
+huggingface-hub==0.24.6
+google-generativeai==0.7.2
+openai==1.42.0
+groq==0.11.0
+
+# Configuration and Environment  
+python-dotenv==1.0.1
+pydantic==2.9.2
+pydantic-settings==2.5.2
+
+# File Processing
+aiofiles==24.1.0
+openpyxl==3.1.5
+python-docx==1.1.2
+PyPDF2==3.0.1
+
+# Utilities
+rich==13.9.4  # Updated to latest
+typer==0.16.1
+click==8.1.7
+tenacity==9.0.0
+
+# Async and Concurrency
+asyncio-throttle==1.0.2
+anyio>=4.4.0  # Fixed thread race condition vulnerability
+
+# Rate Limiting
+slowapi==0.1.9
+
+# Web server improvements
+h11>=0.16.0  # Fixed vulnerability CVE-2025-43859
+
+# Flask (if needed)
+flask>=3.1.1  # Fixed session signing vulnerability CVE-2025-47278
+
+# Testing Dependencies
+pytest==8.3.2
+pytest-asyncio==0.24.0
+pytest-cov==5.0.0
+pytest-mock==3.14.0
+pytest-xdist==3.4.0
+respx==0.20.2
+
+# Linting and Formatting
+black==24.8.0
+flake8==7.1.1
+mypy==1.11.2
+isort==5.12.0
+
+# Security Scanning
+bandit==1.7.9
+safety==3.6.0
+pip-audit==2.9.0
+
+# Additional schema validation
+jsonschema==4.23.0
+
+# Development and Code Quality
+pre-commit==3.5.0
+
+# Type Stubs
+types-requests==2.31.0.10
+types-PyYAML==6.0.12.12
+
+# Production Dependencies
+gunicorn==21.2.0
+
+# Logging and Monitoring
+structlog==23.2.0
+
+# Optional: If using Redis for caching/sessions
+# redis==5.0.1
+
+# Optional: If using PostgreSQL instead of MongoDB
+# asyncpg==0.29.0
+# sqlalchemy[asyncio]==2.0.23
+
+# Optional: If using Celery for background tasks
+# celery==5.3.4

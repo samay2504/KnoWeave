@@ -1,0 +1,254 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Futuristic Cyber Theme */
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&family=Rajdhani:wght@300;400;500;600;700&display=swap');
+
+:root {
+  --cyber-black: #0a0a0a;
+  --cyber-gray-900: #0d0d0d;
+  --cyber-gray-800: #111111;
+  --cyber-gray-700: #1a1a1a;
+  --neon-orange: #f97316;
+  --neon-orange-glow: rgba(249, 115, 22, 0.4);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: 'Rajdhani', 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background: var(--cyber-black);
+  color: #ffffff;
+  overflow-x: hidden;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: 
+    radial-gradient(circle at 20% 20%, rgba(249, 115, 22, 0.1) 0%, transparent 50%),
+    radial-gradient(circle at 80% 80%, rgba(249, 115, 22, 0.05) 0%, transparent 50%),
+    radial-gradient(circle at 40% 40%, rgba(249, 115, 22, 0.03) 0%, transparent 50%);
+  pointer-events: none;
+  z-index: -1;
+}
+
+code {
+  font-family: 'Orbitron', source-code-pro, Menlo, Monaco, Consolas, 'Courier New', monospace;
+}
+
+.App {
+  min-height: 100vh;
+  position: relative;
+}
+
+/* Cyber Grid Background */
+.cyber-grid {
+  background-image: 
+    linear-gradient(rgba(249, 115, 22, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(249, 115, 22, 0.03) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+/* Liquid Morph Effects */
+.liquid-morph {
+  border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%;
+  animation: liquid 20s ease-in-out infinite;
+}
+
+.liquid-morph-alt {
+  border-radius: 30% 60% 70% 40% / 50% 60% 30% 60%;
+  animation: liquid 25s ease-in-out infinite reverse;
+}
+
+/* Glassmorphism Effect */
+.glass {
+  background: rgba(26, 26, 26, 0.8);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(249, 115, 22, 0.1);
+}
+
+.glass-strong {
+  background: rgba(26, 26, 26, 0.95);
+  backdrop-filter: blur(30px);
+  border: 1px solid rgba(249, 115, 22, 0.2);
+}
+
+/* Neon Glow Effects */
+.neon-glow {
+  box-shadow: 
+    0 0 5px rgba(249, 115, 22, 0.5),
+    0 0 10px rgba(249, 115, 22, 0.3),
+    0 0 20px rgba(249, 115, 22, 0.1);
+}
+
+.neon-glow-strong {
+  box-shadow: 
+    0 0 10px rgba(249, 115, 22, 0.8),
+    0 0 20px rgba(249, 115, 22, 0.6),
+    0 0 40px rgba(249, 115, 22, 0.4),
+    inset 0 0 10px rgba(249, 115, 22, 0.1);
+}
+
+.neon-text {
+  color: #f97316;
+  text-shadow: 
+    0 0 5px rgba(249, 115, 22, 0.8),
+    0 0 10px rgba(249, 115, 22, 0.6),
+    0 0 20px rgba(249, 115, 22, 0.4);
+}
+
+/* Cyber Button Styles */
+.cyber-button {
+  position: relative;
+  background: linear-gradient(45deg, rgba(249, 115, 22, 0.1), rgba(26, 26, 26, 0.9));
+  border: 1px solid rgba(249, 115, 22, 0.3);
+  color: #f97316;
+  transition: all 0.3s ease;
+  overflow: hidden;
+}
+
+.cyber-button::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(249, 115, 22, 0.2), transparent);
+  transition: left 0.5s ease;
+}
+
+.cyber-button:hover::before {
+  left: 100%;
+}
+
+.cyber-button:hover {
+  background: linear-gradient(45deg, rgba(249, 115, 22, 0.2), rgba(26, 26, 26, 0.8));
+  border-color: rgba(249, 115, 22, 0.6);
+  box-shadow: 0 0 20px rgba(249, 115, 22, 0.3);
+  transform: translateY(-2px);
+}
+
+/* Loading Animations */
+.cyber-pulse {
+  animation: cyber-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes cyber-pulse {
+  0%, 100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.7);
+  }
+  
+  50% {
+    opacity: 0.8;
+    box-shadow: 0 0 0 10px rgba(249, 115, 22, 0);
+  }
+}
+
+/* Scrollbar Styling */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--cyber-gray-800);
+}
+
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(45deg, #f97316, #ea580c);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(45deg, #fb923c, #f97316);
+}
+
+/* Selection Styling */
+::selection {
+  background: rgba(249, 115, 22, 0.3);
+  color: #ffffff;
+}
+
+/* Form Elements */
+.cyber-input {
+  background: rgba(26, 26, 26, 0.8);
+  border: 1px solid rgba(249, 115, 22, 0.2);
+  color: #ffffff;
+  transition: all 0.3s ease;
+}
+
+.cyber-input:focus {
+  outline: none;
+  border-color: rgba(249, 115, 22, 0.6);
+  box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.1);
+}
+
+.cyber-input::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+/* Status Indicators */
+.status-online {
+  background: linear-gradient(45deg, #10b981, #059669);
+  box-shadow: 0 0 10px rgba(16, 185, 129, 0.3);
+}
+
+.status-warning {
+  background: linear-gradient(45deg, #f59e0b, #d97706);
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.3);
+}
+
+.status-error {
+  background: linear-gradient(45deg, #ef4444, #dc2626);
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.3);
+}
+
+/* Typography */
+.cyber-heading {
+  font-family: 'Orbitron', monospace;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  background: linear-gradient(45deg, #ffffff, #f97316);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.cyber-subheading {
+  font-family: 'Orbitron', monospace;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: #f97316;
+}
+
+/* Utility Classes */
+.backdrop-cyber {
+  backdrop-filter: blur(20px) saturate(180%);
+  background: rgba(10, 10, 10, 0.8);
+}
+
+.border-cyber {
+  border: 1px solid rgba(249, 115, 22, 0.2);
+}
+
+.shadow-cyber {
+  box-shadow: 
+    0 4px 20px rgba(0, 0, 0, 0.5),
+    0 0 20px rgba(249, 115, 22, 0.1);
+}
+
+.text-shadow-cyber {
+  text-shadow: 0 0 10px rgba(249, 115, 22, 0.5);
+}

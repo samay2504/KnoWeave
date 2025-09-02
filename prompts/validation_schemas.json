@@ -1,0 +1,536 @@
+{
+  "_meta": {
+    "description": "JSON schemas for validating agent outputs in the Human-AI Co-Creation system",
+    "version": "1.0.0",
+    "date": "2025-09-01",
+    "usage": "Import these schemas for pydantic validation or JSON schema validation"
+  },
+
+  "schemas": {
+    "perception_output": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "required": ["session_id", "summary_short", "intents", "entities", "safe_to_continue", "call_metadata"],
+      "properties": {
+        "session_id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_-]+$",
+          "description": "Unique session identifier"
+        },
+        "summary_short": {
+          "type": "string",
+          "maxLength": 60,
+          "description": "Brief summary ≤60 words"
+        },
+        "summary_long": {
+          "type": "string",
+          "maxLength": 300,
+          "description": "Detailed summary ≤300 words"
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Generated title for the content"
+        },
+        "intents": {
+          "type": "array",
+          "items": {"type": "string"},
+          "minItems": 1,
+          "maxItems": 10,
+          "description": "Ranked list of detected intents"
+        },
+        "entities": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "type", "confidence"],
+            "properties": {
+              "name": {"type": "string"},
+              "type": {"type": "string", "enum": ["PERSON", "LOCATION", "ORGANIZATION", "CONCEPT", "STRUCTURE", "OBJECT", "EVENT"]},
+              "start": {"type": "integer", "minimum": 0},
+              "end": {"type": "integer", "minimum": 0},
+              "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+            }
+          },
+          "description": "Named entities with positions and confidence"
+        },
+        "sentiment": {
+          "type": "object",
+          "required": ["label", "score"],
+          "properties": {
+            "label": {"type": "string", "enum": ["positive", "negative", "neutral"]},
+            "score": {"type": "number", "minimum": -1, "maximum": 1}
+          }
+        },
+        "key_phrases": {
+          "type": "array",
+          "items": {"type": "string"},
+          "maxItems": 20,
+          "description": "Important phrases extracted from input"
+        },
+        "tags": {
+          "type": "array",
+          "items": {"type": "string"},
+          "maxItems": 10,
+          "description": "Topical tags for categorization"
+        },
+        "recommended_chunks": {
+          "type": "array",
+          "items": {"type": "string"},
+          "maxItems": 5,
+          "description": "Chunk IDs most relevant for planning"
+        },
+        "safe_to_continue": {
+          "type": "boolean",
+          "description": "Whether processing can safely continue"
+        },
+        "warnings": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Warnings about input quality or content"
+        },
+        "call_metadata": {
+          "type": "object",
+          "required": ["provider", "latency_ms"],
+          "properties": {
+            "provider": {"type": "string"},
+            "model": {"type": "string"},
+            "latency_ms": {"type": "integer", "minimum": 0},
+            "tokens": {"type": "integer", "minimum": 0}
+          }
+        }
+      }
+    },
+
+    "planner_output": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "required": ["session_id", "branches", "call_metadata"],
+      "properties": {
+        "session_id": {"type": "string"},
+        "branches": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 5,
+          "items": {
+            "type": "object",
+            "required": ["branch_id", "title", "steps", "cost_estimate"],
+            "properties": {
+              "branch_id": {
+                "type": "string",
+                "pattern": "^branch_[a-zA-Z0-9_]+$"
+              },
+              "title": {
+                "type": "string",
+                "maxLength": 100
+              },
+              "rationale": {
+                "type": "string",
+                "maxLength": 500,
+                "description": "Explanation of branch approach"
+              },
+              "score_estimate": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1,
+                "description": "Predicted quality score"
+              },
+              "cost_estimate": {
+                "type": "object",
+                "required": ["tokens", "time_ms"],
+                "properties": {
+                  "tokens": {"type": "integer", "minimum": 0},
+                  "time_ms": {"type": "integer", "minimum": 0}
+                }
+              },
+              "steps": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 10,
+                "items": {
+                  "type": "object",
+                  "required": ["step_id", "agent", "action", "estimated_tokens", "estimated_ms"],
+                  "properties": {
+                    "step_id": {"type": "string"},
+                    "agent": {
+                      "type": "string",
+                      "enum": ["perception", "planner", "graph_manager", "verifier", "evaluator", "session_manager"]
+                    },
+                    "action": {
+                      "type": "string",
+                      "maxLength": 200,
+                      "description": "One-line actionable instruction"
+                    },
+                    "inputs": {
+                      "type": "object",
+                      "description": "Parameters and references for the step"
+                    },
+                    "estimated_tokens": {"type": "integer", "minimum": 0},
+                    "estimated_ms": {"type": "integer", "minimum": 0},
+                    "heavy": {
+                      "type": "boolean",
+                      "description": "Requires heavy compute resources"
+                    }
+                  }
+                }
+              },
+              "safety_checks": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Required safety validations"
+              },
+              "meta": {
+                "type": "object",
+                "description": "Additional metadata for the branch"
+              }
+            }
+          }
+        },
+        "call_metadata": {"$ref": "#/definitions/call_metadata"}
+      }
+    },
+
+    "verifier_output": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "required": ["branch_id", "accept_reject", "confidence", "call_metadata"],
+      "properties": {
+        "branch_id": {"type": "string"},
+        "factual_consistency": {
+          "type": "object",
+          "properties": {
+            "score": {"type": "number", "minimum": 0, "maximum": 1},
+            "issues": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["type", "location", "evidence"],
+                "properties": {
+                  "type": {"type": "string", "enum": ["factual_error", "unsupported_claim", "contradiction"]},
+                  "location": {"type": "string"},
+                  "evidence": {"type": "string"},
+                  "severity": {"type": "string", "enum": ["low", "medium", "high"]}
+                }
+              }
+            }
+          }
+        },
+        "grammar_issues": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["location", "suggestion"],
+            "properties": {
+              "location": {"type": "string"},
+              "suggestion": {"type": "string"},
+              "type": {"type": "string", "enum": ["spelling", "grammar", "style", "clarity"]}
+            }
+          }
+        },
+        "safety_violations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["rule", "severity", "explanation"],
+            "properties": {
+              "rule": {"type": "string"},
+              "severity": {"type": "string", "enum": ["low", "medium", "high"]},
+              "explanation": {"type": "string"},
+              "location": {"type": "string"}
+            }
+          }
+        },
+        "accept_reject": {
+          "type": "string",
+          "enum": ["accept", "reject", "needs_revision"]
+        },
+        "suggested_edits": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["location", "replacement"],
+            "properties": {
+              "location": {"type": "string"},
+              "replacement": {"type": "string"},
+              "reason": {"type": "string"}
+            }
+          }
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Confidence in verification results"
+        },
+        "call_metadata": {"$ref": "#/definitions/call_metadata"}
+      }
+    },
+
+    "evaluator_output": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "required": ["session_id", "ranked_branches", "call_metadata"],
+      "properties": {
+        "session_id": {"type": "string"},
+        "ranked_branches": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["branch_id", "scores", "composite_score", "rank"],
+            "properties": {
+              "branch_id": {"type": "string"},
+              "scores": {
+                "type": "object",
+                "required": ["relevance", "creativity", "safety"],
+                "properties": {
+                  "relevance": {"type": "number", "minimum": 0, "maximum": 1},
+                  "creativity": {"type": "number", "minimum": 0, "maximum": 1},
+                  "safety": {"type": "number", "minimum": 0, "maximum": 1},
+                  "cost": {"type": "number", "description": "Normalized cost score"},
+                  "feasibility": {"type": "number", "minimum": 0, "maximum": 1},
+                  "quality": {"type": "number", "minimum": 0, "maximum": 1}
+                }
+              },
+              "composite_score": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1,
+                "description": "Weighted composite score"
+              },
+              "rank": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "Ranking position (1 is best)"
+              },
+              "recommended": {
+                "type": "boolean",
+                "description": "Whether this branch is recommended"
+              },
+              "reasons": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Explanations for the ranking"
+              }
+            }
+          }
+        },
+        "criteria_weights": {
+          "type": "object",
+          "description": "Weights used for scoring"
+        },
+        "call_metadata": {"$ref": "#/definitions/call_metadata"}
+      }
+    },
+
+    "graph_manager_output": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "required": ["session_id", "applied_ops", "call_metadata"],
+      "properties": {
+        "session_id": {"type": "string"},
+        "applied_ops": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["op", "status"],
+            "properties": {
+              "op": {"type": "string", "enum": ["create_node", "update_node", "create_edge", "merge_node", "prune"]},
+              "node_id": {"type": "string"},
+              "edge_id": {"type": "string"},
+              "status": {"type": "string", "enum": ["success", "failed", "skipped"]},
+              "error": {"type": "string"}
+            }
+          }
+        },
+        "merged_nodes": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["from", "into"],
+            "properties": {
+              "from": {"type": "array", "items": {"type": "string"}},
+              "into": {"type": "string"},
+              "similarity": {"type": "number", "minimum": 0, "maximum": 1}
+            }
+          }
+        },
+        "pruned_nodes": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "IDs of nodes that were pruned"
+        },
+        "node_count": {"type": "integer", "minimum": 0},
+        "edge_count": {"type": "integer", "minimum": 0},
+        "graph_stats": {
+          "type": "object",
+          "properties": {
+            "avg_degree": {"type": "number"},
+            "connected_components": {"type": "integer"},
+            "density": {"type": "number", "minimum": 0, "maximum": 1}
+          }
+        },
+        "call_metadata": {"$ref": "#/definitions/call_metadata"}
+      }
+    },
+
+    "session_manager_output": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "object",
+      "required": ["session_id", "plan_id", "agents_sequence", "prompts", "created_at", "call_metadata"],
+      "properties": {
+        "session_id": {"type": "string"},
+        "plan_id": {"type": "string"},
+        "agents_sequence": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["perception", "planner", "graph_manager", "verifier", "evaluator"]
+          },
+          "minItems": 1
+        },
+        "prompts": {
+          "type": "object",
+          "description": "Agent name to PTG payload mapping",
+          "patternProperties": {
+            "^(perception|planner|graph_manager|verifier|evaluator)$": {
+              "type": "object",
+              "required": ["agent_name", "temperature"],
+              "properties": {
+                "agent_name": {"type": "string"},
+                "temperature": {"type": "number", "minimum": 0, "maximum": 2},
+                "max_tokens": {"type": "integer", "minimum": 1},
+                "output_schema": {"type": "object"}
+              }
+            }
+          }
+        },
+        "validation_checks": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Validation steps to run after each agent"
+        },
+        "execution_mode": {
+          "type": "string",
+          "enum": ["sequential", "parallel", "hybrid"],
+          "default": "sequential"
+        },
+        "estimated_cost": {
+          "type": "object",
+          "properties": {
+            "total_tokens": {"type": "integer"},
+            "total_time_ms": {"type": "integer"},
+            "cost_usd": {"type": "number"}
+          }
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "call_metadata": {"$ref": "#/definitions/call_metadata"}
+      }
+    }
+  },
+
+  "definitions": {
+    "call_metadata": {
+      "type": "object",
+      "required": ["provider", "latency_ms"],
+      "properties": {
+        "provider": {
+          "type": "string",
+          "enum": ["openai", "anthropic", "google", "groq", "huggingface", "local", "fallback"]
+        },
+        "model": {"type": "string"},
+        "latency_ms": {"type": "integer", "minimum": 0},
+        "tokens": {"type": "integer", "minimum": 0},
+        "cost_usd": {"type": "number", "minimum": 0},
+        "retry_count": {"type": "integer", "minimum": 0},
+        "fallback_used": {"type": "boolean"},
+        "timestamp": {"type": "string", "format": "date-time"}
+      }
+    },
+    
+    "ptg_payload": {
+      "type": "object",
+      "required": ["session_id", "topic", "agent_name", "agent_instructions", "output_schema"],
+      "properties": {
+        "session_id": {"type": "string"},
+        "topic": {"type": "string"},
+        "topic_descriptor": {"type": "string"},
+        "mode": {"type": "string", "enum": ["conservative", "balanced", "creative"]},
+        "context_chunks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["id", "text"],
+            "properties": {
+              "id": {"type": "string"},
+              "text": {"type": "string"},
+              "embedding": {"type": "array", "items": {"type": "number"}},
+              "score": {"type": "number"}
+            }
+          }
+        },
+        "user_constraints": {"type": "object"},
+        "agent_name": {"type": "string"},
+        "agent_instructions": {"type": "string"},
+        "few_shot_examples": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["input", "output"],
+            "properties": {
+              "input": {"type": "object"},
+              "output": {"type": "object"}
+            }
+          }
+        },
+        "output_schema": {"type": "object"},
+        "max_tokens": {"type": "integer", "minimum": 1},
+        "temperature": {"type": "number", "minimum": 0, "maximum": 2},
+        "stop_sequences": {"type": "array", "items": {"type": "string"}}
+      }
+    }
+  },
+
+  "validation_rules": {
+    "global": [
+      "All responses must include call_metadata",
+      "session_id must be consistent across all outputs",
+      "JSON must be valid and parseable",
+      "Required fields must not be null or empty",
+      "Enum values must match exactly",
+      "Numeric ranges must be respected"
+    ],
+    "agent_specific": {
+      "perception": [
+        "summary_short must be ≤60 words",
+        "intents array must not be empty",
+        "entities must have valid confidence scores",
+        "recommended_chunks must reference valid chunk IDs"
+      ],
+      "planner": [
+        "branches array must have 1-5 items",
+        "each step must have valid agent name",
+        "cost estimates must be positive integers",
+        "branch_ids must be unique"
+      ],
+      "verifier": [
+        "accept_reject must be valid enum value",
+        "confidence must be 0-1 range",
+        "safety violations with high severity must result in reject"
+      ],
+      "evaluator": [
+        "ranks must be consecutive integers starting from 1",
+        "composite_score must be in 0-1 range",
+        "if safety < 0.2, recommended must be false"
+      ],
+      "graph_manager": [
+        "node_count and edge_count must be non-negative",
+        "merged_nodes from array must not be empty",
+        "operation status must be valid enum"
+      ]
+    }
+  }
+}

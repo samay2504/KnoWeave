@@ -1,0 +1,46 @@
+{
+  "timestamp": "2025-09-02T17:57:00Z",
+  "ptg_tests_run": 10,
+  "ptg_tests_passed": 10,
+  "ptg_tests_failed": 0,
+  "validations": {
+    "prompt_structure": "valid",
+    "output_schema_present": "valid",
+    "few_shot_examples_capability": "valid", 
+    "response_format_instructions": "valid",
+    "topic_agnostic_generation": "valid",
+    "temperature_settings_appropriate": "valid",
+    "prompt_length_management": "valid",
+    "context_chunk_handling": "valid",
+    "session_manager_integration": "valid"
+  },
+  "schema_validation": {
+    "all_agents_have_schemas": true,
+    "call_metadata_required": true,
+    "required_fields_present": true,
+    "json_schema_valid": true
+  },
+  "prompt_components_verified": [
+    "SYSTEM section",
+    "INPUT section", 
+    "OUTPUT_SCHEMA section",
+    "INSTRUCTIONS section with strict JSON requirement"
+  ],
+  "ptg_methods_tested": [
+    "generate_canonical_prompt"
+  ],
+  "agent_prompts_validated": [
+    "perception",
+    "planner", 
+    "graph_manager",
+    "verifier",
+    "evaluator"
+  ],
+  "notes": [
+    "PTG successfully generates topic-agnostic prompts",
+    "All required schema components present",
+    "Temperature settings appropriate per agent type",
+    "Prompt length management working",
+    "Context chunk handling functional"
+  ]
+}

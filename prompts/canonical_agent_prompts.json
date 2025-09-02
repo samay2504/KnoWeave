@@ -1,0 +1,727 @@
+{
+  "meta": {
+    "version": "1.0.0",
+    "created": "2025-09-01",
+    "description": "Canonical prompt bank for 6-agent Human-AI Co-Creation system with strict JSON-only output",
+    "global_rules": {
+      "strict_json_output": "RESPONSE FORMAT: Return only a single JSON object exactly matching the schema provided below. Do not include explanatory text, code fences, or extra fields.",
+      "retry_instruction": "If previous response failed JSON validation, strictly produce valid JSON only (no commentary). If confused, reduce response complexity.",
+      "deterministic_sampling": "Use low temperature (0.0-0.3) for planner/graph/verifier/evaluator steps. Higher temperature allowed for creative perception or idea generation.",
+      "timeout_chunking": "If input_text > MAX_PROMPT_CHARS, use chunking pipeline and pass only relevant chunks.",
+      "schema_versioning": "Include schema_version in prompts for future compatibility",
+      "call_metadata": "Each LLM call must produce call_metadata object with provider, model, latency_ms, token_usage_estimate"
+    },
+    "retry_policy": {
+      "retry_max": 3,
+      "fallback_mode": "If all retries fail, use FallbackLLM with fallback: true",
+      "exponential_backoff": true
+    }
+  },
+
+  "agents": {
+    "session_manager": {
+      "role": "Orchestrates session lifecycle, builds per-agent prompts using PTG, routes messages, collects outputs, persists session state",
+      "temperature_range": "0.1-0.3",
+      "system_prompt": "SYSTEM: You are the Session Manager. Your task is orchestration, not content generation. For each new session, produce: 1) A topology of which agents to call and in which order. 2) Per-agent prompt payloads using the Prompt Template Generator (PTG) format below. 3) Validation checks that must be run after each agent's response. Always return a JSON object matching the schema provided in OUTPUT_SCHEMA.",
+      
+      "ptg_template_format": {
+        "session_id": "{session_id}",
+        "topic": "{topic}",
+        "topic_descriptor": "{topic_descriptor}",
+        "mode": "{mode}",
+        "context_chunks": [{"id": "...", "text": "...", "embedding": []}],
+        "user_constraints": "{user_constraints}",
+        "agent_name": "{agent_name}",
+        "agent_instructions": "{agent_instructions}",
+        "few_shot_examples": [{"input": "...", "output": {}}],
+        "output_schema": {},
+        "max_tokens": "{max_tokens}",
+        "temperature": "{temperature}",
+        "stop_sequences": ["\n\n"]
+      },
+
+      "output_schema": {
+        "type": "object",
+        "required": ["session_id", "plan_id", "agents_sequence", "prompts", "created_at", "call_metadata"],
+        "properties": {
+          "session_id": {"type": "string"},
+          "plan_id": {"type": "string"},
+          "agents_sequence": {
+            "type": "array",
+            "items": {"type": "string"}
+          },
+          "prompts": {
+            "type": "object",
+            "description": "agent_name -> PTG payload used"
+          },
+          "created_at": {"type": "string", "format": "date-time"},
+          "call_metadata": {"type": "object"}
+        }
+      },
+
+      "edge_cases": [
+        "Concurrent requests: Use optimistic locking on session documents",
+        "Long-running sessions: Persist checkpoints after each agent completes",
+        "Missing context chunks: Call chunker again and reconstruct embeddings",
+        "PTG errors: Rollback plan and create backup in /data/backups/{session_id}/failed_plan.json"
+      ],
+
+      "validation_strategy": "Ensure prompts contains per-agent payloads and valid JSON schemas",
+      "retry_strategy": "On failure, fetch latest session state and re-run only affected agents",
+      "fallback_strategy": "Use simplified orchestration with essential agents only",
+
+      "few_shot_examples": [
+        {
+          "input": {
+            "session_id": "sess_001",
+            "topic": "story",
+            "topic_descriptor": "sci-fi lighthouse on Mars",
+            "mode": "creative"
+          },
+          "output": {
+            "session_id": "sess_001",
+            "plan_id": "plan_001",
+            "agents_sequence": ["perception", "planner", "verifier", "evaluator"],
+            "prompts": {
+              "perception": {"agent_name": "perception", "temperature": 0.3},
+              "planner": {"agent_name": "planner", "temperature": 0.7}
+            },
+            "created_at": "2025-09-01T10:00:00Z",
+            "call_metadata": {"provider": "openai", "model": "gpt-4", "latency_ms": 1200}
+          }
+        }
+      ],
+
+      "unit_tests": [
+        "test_session_plan_validation: ensures prompts contains per-agent payloads and valid JSON schemas",
+        "test_resume_after_crash: simulates partial run, ensures resume continues",
+        "test_concurrent_session_handling: validates optimistic locking behavior"
+      ]
+    },
+
+    "perception": {
+      "role": "Convert raw user input into structured metadata, chunks, named entities, intent(s), sentiment, and extractive summary",
+      "temperature_range": "0.2-0.4",
+      "system_prompt": "SYSTEM: You are Perception Agent. Convert the provided input_text and context_chunks into structured metadata including entities, intents, and sentiment analysis. Output only JSON matching OUTPUT_SCHEMA. Use provided context_chunks for reference. If input is very long, work on the supplied chunk list.",
+      
+      "user_template": {
+        "session_id": "{session_id}",
+        "input_text": "{user_text}",
+        "attachments": [{"id": "doc1", "type": "pdf|txt", "content": "..."}],
+        "context_chunks": [{"id": "...", "text": "..."}],
+        "mode": "{mode}"
+      },
+
+      "output_schema": {
+        "type": "object",
+        "required": ["session_id", "summary_short", "intents", "entities", "safe_to_continue", "call_metadata"],
+        "properties": {
+          "session_id": {"type": "string"},
+          "summary_short": {"type": "string", "maxLength": 60, "description": "≤60 words"},
+          "summary_long": {"type": "string", "maxLength": 300, "description": "≤300 words"},
+          "title": {"type": "string"},
+          "intents": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "ranked intents"
+          },
+          "entities": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {"type": "string"},
+                "type": {"type": "string"},
+                "start": {"type": "integer"},
+                "end": {"type": "integer"},
+                "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+              }
+            }
+          },
+          "sentiment": {
+            "type": "object",
+            "properties": {
+              "label": {"type": "string"},
+              "score": {"type": "number", "minimum": -1, "maximum": 1}
+            }
+          },
+          "key_phrases": {
+            "type": "array",
+            "items": {"type": "string"}
+          },
+          "tags": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "topical tags"
+          },
+          "recommended_chunks": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "chunk ids most relevant for planning"
+          },
+          "safe_to_continue": {"type": "boolean"},
+          "warnings": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "e.g., ambiguous, contradictory"
+          },
+          "call_metadata": {"type": "object"}
+        }
+      },
+
+      "concrete_prompt": "SYSTEM:\nYou are the Perception Agent. Analyze the input and produce structured metadata. Be brief. Output JSON ONLY following OUTPUT_SCHEMA.\n\nCONTEXT:\n{context_chunks}\n\nINPUT:\n{input_text}\n\nOUTPUT_SCHEMA:\n{PerceptionOutput JSON schema}\n\nINSTRUCTIONS:\n- Provide 'summary_short' ≤60 words.\n- Identify 5 highest-ranked intents.\n- Return 'recommended_chunks' (3 max) by chunk id.\n- If PII suspected, set 'safe_to_continue' to false and add 'PII' to tags.\n\nRESPONSE FORMAT: Return only a single JSON object exactly matching the schema provided below. Do not include explanatory text, code fences, or extra fields.",
+
+      "edge_cases": [
+        "Empty/trivial input: return safe_to_continue=false with warning input_empty",
+        "Contradictory info in attachments: set warnings and list conflicting sentences with indices",
+        "PII detection: If entities appear to be PII, add tags: ['PII'], set safe_to_continue=false",
+        "Non-English input: Detect language; if not supported, return warnings and safe_to_continue=false"
+      ],
+
+      "validation_strategy": "Validate presence of summary_short and recommended_chunks. If missing, retry with instruction to extract 3-5 recommended chunks and 1 short summary",
+      "retry_strategy": "If JSON validation fails, retry with simplified structure preserving required fields",
+      "fallback_strategy": "Use rule-based extraction for basic metadata when LLM fails",
+
+      "few_shot_examples": [
+        {
+          "input": {
+            "session_id": "sess_001",
+            "input_text": "Write a short sci-fi story about a lighthouse on Mars.",
+            "attachments": [],
+            "context_chunks": [],
+            "mode": "creative"
+          },
+          "output": {
+            "session_id": "sess_001",
+            "summary_short": "User requests creative sci-fi story featuring lighthouse on Mars",
+            "summary_long": "User wants a short science fiction story with specific setting elements: a lighthouse structure on Mars. This suggests themes of isolation, exploration, guidance, and futuristic technology adapted to alien environments.",
+            "title": "Mars Lighthouse Story Request",
+            "intents": ["creative_story", "describe_setting", "sci_fi_genre", "short_form"],
+            "entities": [
+              {"name": "lighthouse", "type": "STRUCTURE", "start": 25, "end": 35, "confidence": 0.95},
+              {"name": "Mars", "type": "LOCATION", "start": 39, "end": 43, "confidence": 0.98}
+            ],
+            "sentiment": {"label": "neutral", "score": 0.1},
+            "key_phrases": ["lighthouse", "Mars", "sci-fi story", "short"],
+            "tags": ["creative", "science_fiction", "space", "structure"],
+            "recommended_chunks": [],
+            "safe_to_continue": true,
+            "warnings": [],
+            "call_metadata": {"provider": "openai", "model": "gpt-4", "latency_ms": 800}
+          }
+        }
+      ],
+
+      "unit_tests": [
+        "test_perception_detects_intent: ensures agent extracts creative_story intent for story prompts",
+        "test_perception_handles_empty_input: input '' yields safe_to_continue=false",
+        "test_perception_flags_pii: detects and flags potential PII in input",
+        "test_perception_extracts_entities: correctly identifies named entities with confidence scores"
+      ]
+    },
+
+    "planner": {
+      "role": "Generate N branches (default 3) with stepwise plans and rationale. Each branch is a self-contained candidate path.",
+      "temperature_range": "0.1-0.3 (deterministic for critical planning)",
+      "system_prompt": "SYSTEM: You are Planner Agent. Using perception metadata and the provided chunks, author N candidate branches with detailed steps for the session. Each branch must be independent, contain an estimated cost (time/LLM tokens), required actions, required agents, and a short rationale. Output strictly as JSON array named 'branches' following OUTPUT_SCHEMA.",
+
+      "input_template": {
+        "session_id": "{session_id}",
+        "perception_output": {},
+        "context_chunks": [{"id": "...", "text": "...", "embedding": []}],
+        "constraints": {
+          "max_steps": 8,
+          "forbidden_topics": [],
+          "preferred_style": "concise|detailed|poetic"
+        },
+        "branch_count": 3,
+        "mode": "{mode}"
+      },
+
+      "output_schema": {
+        "type": "object",
+        "required": ["session_id", "branches", "call_metadata"],
+        "properties": {
+          "session_id": {"type": "string"},
+          "branches": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["branch_id", "title", "steps", "cost_estimate"],
+              "properties": {
+                "branch_id": {"type": "string"},
+                "title": {"type": "string"},
+                "rationale": {"type": "string"},
+                "score_estimate": {"type": "number", "minimum": 0, "maximum": 1},
+                "cost_estimate": {
+                  "type": "object",
+                  "properties": {
+                    "tokens": {"type": "integer"},
+                    "time_ms": {"type": "integer"}
+                  }
+                },
+                "steps": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["step_id", "agent", "action", "estimated_tokens", "estimated_ms"],
+                    "properties": {
+                      "step_id": {"type": "string"},
+                      "agent": {"type": "string"},
+                      "action": {"type": "string", "description": "one-line actionable instruction"},
+                      "inputs": {"type": "object", "description": "references to chunk ids or params"},
+                      "estimated_tokens": {"type": "integer"},
+                      "estimated_ms": {"type": "integer"},
+                      "heavy": {"type": "boolean", "description": "requires heavy compute"}
+                    }
+                  }
+                },
+                "safety_checks": {
+                  "type": "array",
+                  "items": {"type": "string"},
+                  "description": "e.g., no-PII, no-licensed-music"
+                },
+                "meta": {"type": "object"}
+              }
+            }
+          },
+          "call_metadata": {"type": "object"}
+        }
+      },
+
+      "concrete_prompt": "SYSTEM:\nYou are Planner Agent. Using perception metadata and the provided chunks, author {branch_count} independent plan branches. Output ONLY the JSON array 'branches' matching schema.\n\nINPUT:\nPerceptionOutput: {perception_output}\nChunks: {context_chunks}\nConstraints: {constraints}\n\nSCHEMA:\n{Branch JSON schema}\n\nRULES:\n- Each step must name the agent who will perform it.\n- Include 'estimated_tokens' and 'estimated_ms' for each step.\n- Respect 'forbidden_topics' in constraints.\n\nRESPONSE FORMAT: Return only a single JSON object exactly matching the schema provided below. Do not include explanatory text, code fences, or extra fields.",
+
+      "edge_cases": [
+        "Conflict with constraints: If branch violates constraints, do NOT include it; add rejection_reason field",
+        "Insufficient context: If recommended_chunks empty, request 3 extra retrieval attempts, create simplified branches",
+        "Resource heavy steps: Mark steps requiring heavy compute as heavy:true for worker pool scheduling"
+      ],
+
+      "validation_strategy": "Ensure steps are not empty and cost_estimate.tokens present. If not, retry with instruction to produce concrete steps with estimated_tokens integer values",
+      "retry_strategy": "On validation failure, retry with simpler branch structure and fewer steps",
+      "fallback_strategy": "Generate single default branch with basic steps when all planning fails",
+
+      "few_shot_examples": [
+        {
+          "input": {
+            "session_id": "sess_001",
+            "perception_output": {
+              "intents": ["creative_story", "sci_fi_genre"],
+              "entities": [{"name": "lighthouse", "type": "STRUCTURE"}, {"name": "Mars", "type": "LOCATION"}],
+              "recommended_chunks": []
+            },
+            "constraints": {"max_steps": 5, "preferred_style": "detailed"},
+            "branch_count": 2,
+            "mode": "creative"
+          },
+          "output": {
+            "session_id": "sess_001",
+            "branches": [
+              {
+                "branch_id": "branch_001",
+                "title": "Detailed Mars lighthouse narrative",
+                "rationale": "Focus on world-building and character development for immersive story",
+                "score_estimate": 0.85,
+                "cost_estimate": {"tokens": 2500, "time_ms": 15000},
+                "steps": [
+                  {
+                    "step_id": "step_001",
+                    "agent": "perception",
+                    "action": "Extract setting details and atmosphere requirements",
+                    "inputs": {"focus": "environment"},
+                    "estimated_tokens": 400,
+                    "estimated_ms": 2000,
+                    "heavy": false
+                  },
+                  {
+                    "step_id": "step_002",
+                    "agent": "planner",
+                    "action": "Generate 5-scene story outline with character arcs",
+                    "inputs": {"scenes": 5, "style": "detailed"},
+                    "estimated_tokens": 800,
+                    "estimated_ms": 5000,
+                    "heavy": false
+                  }
+                ],
+                "safety_checks": ["no-violence", "space-accuracy"],
+                "meta": {"complexity": "high", "genre": "hard_sci_fi"}
+              }
+            ],
+            "call_metadata": {"provider": "openai", "model": "gpt-4", "latency_ms": 1500}
+          }
+        }
+      ],
+
+      "unit_tests": [
+        "test_planner_returns_three_branches: validates default branch count",
+        "test_planner_respects_constraints_forbidden_topics: ensures forbidden topics filtered",
+        "test_planner_estimates_costs: verifies token and time estimates present",
+        "test_planner_handles_insufficient_context: manages empty recommended_chunks"
+      ]
+    },
+
+    "graph_manager": {
+      "role": "Maintain knowledge graph (nodes/edges), merge similar nodes, prune low-value nodes, serialize snapshots",
+      "temperature_range": "0.0-0.2 (deterministic for graph operations)",
+      "system_prompt": "SYSTEM: You are Graph Manager. When given new nodes/edges or branch updates, you must: 1) Insert or update nodes/edges into ArangoDB; if Arango unavailable, write into Mongo with identical schema. 2) Apply node-merge heuristics using embedding similarity (threshold configurable). 3) Prune nodes based on age/usage/score and update snapshot. Return only JSON conforming to OUTPUT_SCHEMA.",
+
+      "input_template": {
+        "session_id": "{session_id}",
+        "ops": [{"op": "create_node|update_node|create_edge|merge_node|prune", "payload": {}}],
+        "merge_threshold": 0.82,
+        "prune_policy": {"min_score": 0.05, "max_age_days": 180}
+      },
+
+      "output_schema": {
+        "type": "object",
+        "required": ["session_id", "applied_ops", "call_metadata"],
+        "properties": {
+          "session_id": {"type": "string"},
+          "applied_ops": {
+            "type": "array",
+            "items": {"type": "object"}
+          },
+          "merged_nodes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "from": {"type": "array", "items": {"type": "string"}},
+                "into": {"type": "string"}
+              }
+            }
+          },
+          "pruned_nodes": {
+            "type": "array",
+            "items": {"type": "string"}
+          },
+          "node_count": {"type": "integer"},
+          "edge_count": {"type": "integer"},
+          "call_metadata": {"type": "object"}
+        }
+      },
+
+      "algorithms": {
+        "node_merge": "cosine similarity on embeddings using numpy + scipy.spatial.distance. If sim >= merge_threshold, propose merge",
+        "prune_policy": "importance = score * log(1+usage_count) - age_factor. Prune if below threshold",
+        "backtracking": "remove edges created after branch timestamp, optionally restore snapshot from /data/backups/{session_id}"
+      },
+
+      "edge_cases": [
+        "No embeddings available: fall back to normalized token-overlap Jaccard similarity",
+        "Concurrent merges: use transactions (Arango supports). If fails, use version-controlled merges in Mongo",
+        "Large graph op batches: chunk ops into batches ≤ BATCH_SIZE to avoid DB transaction timeouts"
+      ],
+
+      "validation_strategy": "Verify inserted nodes have stable id format. If DB write fails, retry with exponential backoff (3 attempts)",
+      "retry_strategy": "On DB failure, write to JSON fallback and mark node as pending_sync: true",
+      "fallback_strategy": "Use in-memory graph representation when all database backends fail",
+
+      "few_shot_examples": [
+        {
+          "input": {
+            "session_id": "sess_001",
+            "ops": [
+              {
+                "op": "create_node",
+                "payload": {
+                  "id": "node_lighthouse_001",
+                  "type": "STRUCTURE",
+                  "title": "Mars Lighthouse",
+                  "text": "Automated beacon structure on Mars surface"
+                }
+              }
+            ],
+            "merge_threshold": 0.82,
+            "prune_policy": {"min_score": 0.05}
+          },
+          "output": {
+            "session_id": "sess_001",
+            "applied_ops": [{"op": "create_node", "node_id": "node_lighthouse_001", "status": "success"}],
+            "merged_nodes": [],
+            "pruned_nodes": [],
+            "node_count": 1,
+            "edge_count": 0,
+            "call_metadata": {"provider": "local", "model": "graph_engine", "latency_ms": 150}
+          }
+        }
+      ],
+
+      "unit_tests": [
+        "test_node_merge_threshold: two nodes with high similarity become merged",
+        "test_prune_policy: nodes with low importance pruned",
+        "test_concurrent_operations: validates transaction handling",
+        "test_embedding_fallback: handles missing embeddings gracefully"
+      ]
+    },
+
+    "verifier": {
+      "role": "Verify candidate branches for correctness, factuality, grammar, safety, and adherence to constraints",
+      "temperature_range": "0.0-0.2 (deterministic for verification)",
+      "system_prompt": "SYSTEM: You are Verifier Agent. Take a branch and its referenced chunks; verify: - Factual consistency with chunks - Grammar and readability - Safety & policy checks (e.g., PII, disallowed topics) Return single JSON per branch with reasons and suggested corrections.",
+
+      "input_template": {
+        "session_id": "{session_id}",
+        "branch": {},
+        "referenced_chunks": [{"id": "...", "text": "..."}],
+        "policy_constraints": {}
+      },
+
+      "output_schema": {
+        "type": "object",
+        "required": ["branch_id", "accept_reject", "confidence", "call_metadata"],
+        "properties": {
+          "branch_id": {"type": "string"},
+          "factual_consistency": {
+            "type": "object",
+            "properties": {
+              "score": {"type": "number", "minimum": 0, "maximum": 1},
+              "issues": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "type": {"type": "string"},
+                    "location": {"type": "string"},
+                    "evidence": {"type": "string"}
+                  }
+                }
+              }
+            }
+          },
+          "grammar_issues": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "location": {"type": "string"},
+                "suggestion": {"type": "string"}
+              }
+            }
+          },
+          "safety_violations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "rule": {"type": "string"},
+                "severity": {"type": "string", "enum": ["low", "medium", "high"]},
+                "explanation": {"type": "string"}
+              }
+            }
+          },
+          "accept_reject": {"type": "string", "enum": ["accept", "reject", "needs_revision"]},
+          "suggested_edits": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "location": {"type": "string"},
+                "replacement": {"type": "string"}
+              }
+            }
+          },
+          "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+          "call_metadata": {"type": "object"}
+        }
+      },
+
+      "edge_cases": [
+        "Missing evidence in chunks: Mark as needs_revision and include evidence_needed references",
+        "Ambiguous facts (conflicting sources): Present both sources in issues with confidence low",
+        "PII or legal issues: immediate reject with severity=high"
+      ],
+
+      "validation_strategy": "Ensure accept_reject field present and confidence score provided",
+      "retry_strategy": "If LLM-based verification times out, run lightweight rule-based verifier",
+      "fallback_strategy": "Use regex for numbers/dates, cross-check names against chunks when LLM fails",
+
+      "few_shot_examples": [
+        {
+          "input": {
+            "session_id": "sess_001",
+            "branch": {
+              "branch_id": "branch_001",
+              "title": "Mars lighthouse story",
+              "steps": [{"action": "Create lighthouse character with Mars-specific adaptations"}]
+            },
+            "referenced_chunks": [{"id": "chunk_001", "text": "Mars atmosphere is 95% CO2, pressure 0.6% of Earth"}],
+            "policy_constraints": {"no_violence": true}
+          },
+          "output": {
+            "branch_id": "branch_001",
+            "factual_consistency": {
+              "score": 0.9,
+              "issues": []
+            },
+            "grammar_issues": [],
+            "safety_violations": [],
+            "accept_reject": "accept",
+            "suggested_edits": [],
+            "confidence": 0.85,
+            "call_metadata": {"provider": "openai", "model": "gpt-4", "latency_ms": 1200}
+          }
+        }
+      ],
+
+      "unit_tests": [
+        "test_verifier_flags_hallucination: intentionally altered fact flagged",
+        "test_verifier_detects_pii: identifies and flags PII content",
+        "test_verifier_grammar_check: catches common grammar errors",
+        "test_verifier_policy_compliance: enforces content policy constraints"
+      ]
+    },
+
+    "evaluator": {
+      "role": "Score and rank branches based on multiple criteria (relevance, creativity, safety, cost), provide final ordering",
+      "temperature_range": "0.0-0.2 (deterministic for evaluation)",
+      "system_prompt": "SYSTEM: You are Evaluator Agent. For an array of branches, compute multi-criteria scores and produce a composite ranking. Use scoring weights provided in input. Output JSON exactly matching schema.",
+
+      "input_template": {
+        "session_id": "{session_id}",
+        "branches": [{}],
+        "criteria_weights": {"relevance": 0.4, "creativity": 0.2, "safety": 0.3, "cost": -0.1},
+        "user_preferences": {}
+      },
+
+      "output_schema": {
+        "type": "object",
+        "required": ["session_id", "ranked_branches", "call_metadata"],
+        "properties": {
+          "session_id": {"type": "string"},
+          "ranked_branches": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["branch_id", "scores", "composite_score", "rank"],
+              "properties": {
+                "branch_id": {"type": "string"},
+                "scores": {
+                  "type": "object",
+                  "properties": {
+                    "relevance": {"type": "number", "minimum": 0, "maximum": 1},
+                    "creativity": {"type": "number", "minimum": 0, "maximum": 1},
+                    "safety": {"type": "number", "minimum": 0, "maximum": 1},
+                    "cost": {"type": "number", "description": "normalized cost score"}
+                  }
+                },
+                "composite_score": {"type": "number", "minimum": 0, "maximum": 1},
+                "rank": {"type": "integer", "minimum": 1},
+                "recommended": {"type": "boolean"},
+                "reasons": {
+                  "type": "array",
+                  "items": {"type": "string"}
+                }
+              }
+            }
+          },
+          "call_metadata": {"type": "object"}
+        }
+      },
+
+      "scoring_rules": {
+        "cost_penalty": "Cost is negative weight - higher cost reduces composite score",
+        "safety_override": "If safety < 0.2, set recommended=false regardless of composite score",
+        "tie_breaking": "Use safety then relevance for tie breaking",
+        "normalization": "All scores normalized to 0-1 range before weighting"
+      },
+
+      "edge_cases": [
+        "All branches fail safety: recommend none, provide explanation",
+        "Identical composite scores: apply tie-breaking rules consistently",
+        "Missing cost estimates: use default penalty value"
+      ],
+
+      "validation_strategy": "Ensure ranked_branches not empty and ranks are consecutive integers starting from 1",
+      "retry_strategy": "If ranking fails, retry with simplified scoring (relevance + safety only)",
+      "fallback_strategy": "Use rule-based scoring when LLM evaluation fails",
+
+      "few_shot_examples": [
+        {
+          "input": {
+            "session_id": "sess_001",
+            "branches": [
+              {
+                "branch_id": "branch_001",
+                "title": "Detailed narrative",
+                "cost_estimate": {"tokens": 2500, "time_ms": 15000}
+              },
+              {
+                "branch_id": "branch_002", 
+                "title": "Quick outline",
+                "cost_estimate": {"tokens": 800, "time_ms": 5000}
+              }
+            ],
+            "criteria_weights": {"relevance": 0.4, "creativity": 0.2, "safety": 0.3, "cost": -0.1}
+          },
+          "output": {
+            "session_id": "sess_001",
+            "ranked_branches": [
+              {
+                "branch_id": "branch_002",
+                "scores": {"relevance": 0.8, "creativity": 0.6, "safety": 0.9, "cost": 0.7},
+                "composite_score": 0.75,
+                "rank": 1,
+                "recommended": true,
+                "reasons": ["High safety score", "Lower cost", "Good relevance"]
+              },
+              {
+                "branch_id": "branch_001",
+                "scores": {"relevance": 0.9, "creativity": 0.8, "safety": 0.9, "cost": 0.3},
+                "composite_score": 0.72,
+                "rank": 2,
+                "recommended": true,
+                "reasons": ["Highest creativity", "Excellent relevance", "Higher cost penalty"]
+              }
+            ],
+            "call_metadata": {"provider": "openai", "model": "gpt-4", "latency_ms": 900}
+          }
+        }
+      ],
+
+      "unit_tests": [
+        "test_evaluator_rank_stable: deterministic ranking for identical inputs",
+        "test_evaluator_safety_override: safety < 0.2 prevents recommendation",
+        "test_evaluator_cost_penalty: higher cost reduces composite score",
+        "test_evaluator_tie_breaking: consistent tie resolution"
+      ]
+    }
+  },
+
+  "validation_policy": {
+    "json_fixing": {
+      "step_1": "Run json.loads. If parsing fails, extract largest JSON-looking substring via regex and try parse",
+      "step_2": "If still fails, call LLM again with: 'Previous response failed JSON validity. Produce only valid JSON matching this schema: {schema}. Do not add commentary.'",
+      "step_3": "If after RETRY_MAX attempts still invalid, use FallbackLLM to create conservative structured output",
+      "backup": "Write /data/backups/{session_id}/invalid_responses/attempt_{n}.json and mark in session logs"
+    },
+    "universal_validation": "Always attach call_metadata with provider and attempt counts"
+  },
+
+  "performance_guidelines": {
+    "concurrency": "Use async TaskPool with max_workers. Schedule perception and chunking in parallel; Planner after perception completes",
+    "batching": "Batch embedding requests and similarity checks; use einops for large embedding arrays",
+    "caching": "Implement redis optional cache for recent chunk embeddings and top-k retrievals",
+    "streaming": "Support streaming chunk by chunk to frontend via SSE/websockets for long generation"
+  },
+
+  "testing_matrix": {
+    "per_agent_requirements": [
+      "Validate output schema (pydantic)",
+      "Confirm call_metadata exists with provider and latency",
+      "Force error conditions: simulate provider timeouts, DB unavailability",
+      "Confirm fallback pathways: when provider fails, FallbackLLM used"
+    ],
+    "integration_tests": [
+      "test_full_orchestration: end-to-end with mocked LLMProvider and in-memory DBs",
+      "test_concurrent_sessions: multiple sessions without interference",
+      "test_failure_recovery: graceful handling of component failures"
+    ]
+  },
+
+  "operational_monitoring": {
+    "structured_logs": "{timestamp, level, session_id, agent, event, meta}",
+    "metrics": "request_count, avg_latency_per_agent, failed_validations",
+    "alerts": "If FallbackLLM used > X% in last 24h, create /admin/alerts/fallback_usage.json"
+  }
+}

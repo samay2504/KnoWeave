@@ -141,7 +141,7 @@ class AsyncLLMProvider:
         
         try:
             with open(self.audit_log_path, "a", encoding="utf-8") as f:
-                f.write(json.dumps(audit_entry) + "\n")
+                f.write(json.dumps(audit_entry, default=str) + "\n")
         except Exception as e:
             logger.warning(f"Failed to write prompt audit log: {e}")
 

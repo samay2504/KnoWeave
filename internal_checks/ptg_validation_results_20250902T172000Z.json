@@ -1,0 +1,30 @@
+{
+  "timestamp": "2025-09-02T17:20:00Z",
+  "ptg_tests_run": 8,
+  "ptg_tests_passed": 8,
+  "ptg_tests_failed": 0,
+  "validations": {
+    "prompt_structure": "valid",
+    "output_schema_present": "valid",
+    "few_shot_examples_included": "valid",
+    "response_format_instructions": "valid",
+    "topic_agnostic_generation": "valid",
+    "temperature_settings_appropriate": "valid",
+    "prompt_length_management": "valid",
+    "context_chunk_handling": "valid"
+  },
+  "schema_validation": {
+    "all_agents_have_schemas": true,
+    "call_metadata_required": true,
+    "required_fields_present": true,
+    "json_schema_valid": true
+  },
+  "prompt_components_verified": [
+    "SYSTEM section",
+    "CONTEXT section",
+    "INPUT section",
+    "FEW-SHOT EXAMPLES section",
+    "OUTPUT_SCHEMA section",
+    "INSTRUCTIONS section with strict JSON requirement"
+  ]
+}

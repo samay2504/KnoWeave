@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  arangodb:
+    image: arangodb/arangodb:latest
+    container_name: arangodb
+    restart: unless-stopped
+    ports:
+      - "8529:8529"
+    environment:
+      ARANGO_ROOT_PASSWORD: samay2504
+    volumes:
+      - arangodb_data:/var/lib/arangodb3
+      - arangodb_apps:/var/lib/arangodb3-apps
+    networks:
+      - human-ai-network
+
+  # Optional: MongoDB for comparison
+  mongodb:
+    image: mongo:latest
+    container_name: mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: samay2504
+      MONGO_INITDB_ROOT_PASSWORD: "250403"
+      MONGO_INITDB_DATABASE: human_ai_co_create
+    volumes:
+      - mongodb_data:/data/db
+    networks:
+      - human-ai-network
+
+volumes:
+  arangodb_data:
+  arangodb_apps:
+  mongodb_data:
+
+networks:
+  human-ai-network:
+    driver: bridge

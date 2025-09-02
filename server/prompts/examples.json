@@ -1,0 +1,375 @@
+{
+  "_metadata": {
+    "version": "1.0.0",
+    "description": "Canonical few-shot examples for 6-agent Human-AI Co-Creation system",
+    "updated": "2025-09-01",
+    "usage": "PTG selects examples semantically similar to topic using embeddings"
+  },
+
+  "perception": {
+    "story_creative": [
+      {
+        "input": {
+          "session_id": "demo_001",
+          "input_text": "Write a short sci-fi story about a lighthouse on Mars.",
+          "attachments": [],
+          "context_chunks": [],
+          "mode": "creative"
+        },
+        "output": {
+          "session_id": "demo_001",
+          "summary_short": "User requests creative sci-fi story featuring lighthouse on Mars",
+          "summary_long": "User wants a short science fiction story with specific setting elements: a lighthouse structure on Mars. This suggests themes of isolation, exploration, guidance, and futuristic technology adapted to alien environments.",
+          "title": "Mars Lighthouse Story Request",
+          "intents": ["creative_story", "describe_setting", "sci_fi_genre", "short_form"],
+          "entities": [
+            {"name": "lighthouse", "type": "STRUCTURE", "start": 25, "end": 35, "confidence": 0.95},
+            {"name": "Mars", "type": "LOCATION", "start": 39, "end": 43, "confidence": 0.98}
+          ],
+          "sentiment": {"label": "neutral", "score": 0.1},
+          "key_phrases": ["lighthouse", "Mars", "sci-fi story", "short"],
+          "tags": ["creative", "science_fiction", "space", "structure"],
+          "recommended_chunks": [],
+          "safe_to_continue": true,
+          "warnings": [],
+          "call_metadata": {"provider": "openai", "model": "gpt-4", "latency_ms": 800, "tokens": 120}
+        }
+      }
+    ],
+    "educational": [
+      {
+        "input": {
+          "session_id": "demo_002", 
+          "input_text": "Create a lesson plan about photosynthesis for middle school students",
+          "attachments": [],
+          "context_chunks": [],
+          "mode": "balanced"
+        },
+        "output": {
+          "session_id": "demo_002",
+          "summary_short": "Request for educational content on photosynthesis for middle school level",
+          "summary_long": "User needs a structured lesson plan covering photosynthesis concepts appropriate for middle school students (grades 6-8). Should include age-appropriate explanations, activities, and assessment methods.",
+          "title": "Photosynthesis Lesson Plan Request",
+          "intents": ["educational_content", "lesson_planning", "science_instruction"],
+          "entities": [
+            {"name": "photosynthesis", "type": "CONCEPT", "start": 25, "end": 38, "confidence": 0.98},
+            {"name": "middle school", "type": "EDUCATION_LEVEL", "start": 43, "end": 56, "confidence": 0.95}
+          ],
+          "sentiment": {"label": "neutral", "score": 0.0},
+          "key_phrases": ["lesson plan", "photosynthesis", "middle school", "students"],
+          "tags": ["education", "science", "biology", "lesson_planning"],
+          "recommended_chunks": [],
+          "safe_to_continue": true,
+          "warnings": [],
+          "call_metadata": {"provider": "openai", "model": "gpt-4", "latency_ms": 750, "tokens": 110}
+        }
+      }
+    ]
+  },
+
+  "planner": {
+    "creative_multi_branch": [
+      {
+        "input": {
+          "session_id": "demo_001",
+          "perception_output": {
+            "intents": ["creative_story", "sci_fi_genre"],
+            "entities": [{"name": "lighthouse", "type": "STRUCTURE"}, {"name": "Mars", "type": "LOCATION"}],
+            "recommended_chunks": []
+          },
+          "constraints": {"max_steps": 5, "preferred_style": "detailed"},
+          "branch_count": 3,
+          "mode": "creative"
+        },
+        "output": {
+          "session_id": "demo_001",
+          "branches": [
+            {
+              "branch_id": "branch_001",
+              "title": "Character-driven Mars lighthouse story",
+              "rationale": "Focus on human element and emotional journey of lighthouse keeper",
+              "score_estimate": 0.85,
+              "cost_estimate": {"tokens": 2500, "time_ms": 15000},
+              "steps": [
+                {
+                  "step_id": "step_001",
+                  "agent": "perception",
+                  "action": "Develop lighthouse keeper character background and motivation",
+                  "inputs": {"focus": "character_development"},
+                  "estimated_tokens": 400,
+                  "estimated_ms": 2000,
+                  "heavy": false
+                },
+                {
+                  "step_id": "step_002",
+                  "agent": "planner",
+                  "action": "Create 3-act story structure with emotional beats",
+                  "inputs": {"structure": "three_act", "style": "character_driven"},
+                  "estimated_tokens": 600,
+                  "estimated_ms": 4000,
+                  "heavy": false
+                }
+              ],
+              "safety_checks": ["no-violence", "space-accuracy"],
+              "meta": {"complexity": "medium", "focus": "character"}
+            },
+            {
+              "branch_id": "branch_002",
+              "title": "Technical hard sci-fi approach",
+              "rationale": "Emphasize scientific accuracy and technical challenges of Mars environment",
+              "score_estimate": 0.78,
+              "cost_estimate": {"tokens": 3000, "time_ms": 18000},
+              "steps": [
+                {
+                  "step_id": "step_003",
+                  "agent": "perception",
+                  "action": "Research Mars atmospheric and environmental conditions",
+                  "inputs": {"focus": "scientific_accuracy"},
+                  "estimated_tokens": 500,
+                  "estimated_ms": 3000,
+                  "heavy": true
+                }
+              ],
+              "safety_checks": ["scientific-accuracy"],
+              "meta": {"complexity": "high", "focus": "technical"}
+            }
+          ],
+          "call_metadata": {"provider": "openai", "model": "gpt-4", "latency_ms": 1500, "tokens": 280}
+        }
+      }
+    ],
+    "educational_structured": [
+      {
+        "input": {
+          "session_id": "demo_002",
+          "perception_output": {
+            "intents": ["educational_content", "lesson_planning"],
+            "entities": [{"name": "photosynthesis", "type": "CONCEPT"}],
+            "recommended_chunks": []
+          },
+          "constraints": {"max_steps": 4, "preferred_style": "structured"},
+          "branch_count": 2,
+          "mode": "balanced"
+        },
+        "output": {
+          "session_id": "demo_002",
+          "branches": [
+            {
+              "branch_id": "branch_edu_001",
+              "title": "Interactive photosynthesis lesson with experiments",
+              "rationale": "Hands-on approach to engage middle school students with practical demonstrations",
+              "score_estimate": 0.90,
+              "cost_estimate": {"tokens": 1800, "time_ms": 12000},
+              "steps": [
+                {
+                  "step_id": "step_edu_001",
+                  "agent": "planner",
+                  "action": "Design lab experiment demonstrating oxygen production in aquatic plants",
+                  "inputs": {"grade_level": "middle_school", "safety": "classroom_safe"},
+                  "estimated_tokens": 450,
+                  "estimated_ms": 3000,
+                  "heavy": false
+                }
+              ],
+              "safety_checks": ["age-appropriate", "lab-safety"],
+              "meta": {"approach": "hands_on", "grade_level": "6-8"}
+            }
+          ],
+          "call_metadata": {"provider": "openai", "model": "gpt-4", "latency_ms": 1200, "tokens": 200}
+        }
+      }
+    ]
+  },
+
+  "verifier": {
+    "factual_consistency": [
+      {
+        "input": {
+          "session_id": "demo_001",
+          "branch": {
+            "branch_id": "branch_001",
+            "title": "Mars lighthouse story",
+            "steps": [{"action": "Create lighthouse character with Mars-specific adaptations"}]
+          },
+          "referenced_chunks": [
+            {"id": "chunk_001", "text": "Mars atmosphere is 95% CO2, pressure 0.6% of Earth"}
+          ],
+          "policy_constraints": {"no_violence": true}
+        },
+        "output": {
+          "branch_id": "branch_001",
+          "factual_consistency": {
+            "score": 0.9,
+            "issues": []
+          },
+          "grammar_issues": [],
+          "safety_violations": [],
+          "accept_reject": "accept",
+          "suggested_edits": [],
+          "confidence": 0.85,
+          "call_metadata": {"provider": "openai", "model": "gpt-4", "latency_ms": 1200, "tokens": 150}
+        }
+      }
+    ],
+    "safety_violation": [
+      {
+        "input": {
+          "session_id": "demo_003",
+          "branch": {
+            "branch_id": "branch_unsafe",
+            "title": "Story with personal information",
+            "steps": [{"action": "Create character based on real person with SSN 123-45-6789"}]
+          },
+          "referenced_chunks": [],
+          "policy_constraints": {"no_pii": true}
+        },
+        "output": {
+          "branch_id": "branch_unsafe", 
+          "factual_consistency": {"score": 0.7, "issues": []},
+          "grammar_issues": [],
+          "safety_violations": [
+            {
+              "rule": "no_pii",
+              "severity": "high",
+              "explanation": "Contains Social Security Number which is personally identifiable information"
+            }
+          ],
+          "accept_reject": "reject",
+          "suggested_edits": [
+            {
+              "location": "step character creation",
+              "replacement": "Create fictional character with invented background details"
+            }
+          ],
+          "confidence": 0.95,
+          "call_metadata": {"provider": "openai", "model": "gpt-4", "latency_ms": 800, "tokens": 120}
+        }
+      }
+    ]
+  },
+
+  "evaluator": {
+    "multi_criteria_ranking": [
+      {
+        "input": {
+          "session_id": "demo_001",
+          "branches": [
+            {
+              "branch_id": "branch_001",
+              "title": "Character-driven narrative",
+              "cost_estimate": {"tokens": 2500, "time_ms": 15000}
+            },
+            {
+              "branch_id": "branch_002", 
+              "title": "Technical hard sci-fi",
+              "cost_estimate": {"tokens": 3000, "time_ms": 18000}
+            }
+          ],
+          "criteria_weights": {"relevance": 0.4, "creativity": 0.2, "safety": 0.3, "cost": -0.1},
+          "user_preferences": {"style": "character_focused"}
+        },
+        "output": {
+          "session_id": "demo_001",
+          "ranked_branches": [
+            {
+              "branch_id": "branch_001",
+              "scores": {"relevance": 0.9, "creativity": 0.8, "safety": 0.95, "cost": 0.7},
+              "composite_score": 0.86,
+              "rank": 1,
+              "recommended": true,
+              "reasons": ["Matches user preference for character focus", "High safety score", "Good cost efficiency"]
+            },
+            {
+              "branch_id": "branch_002",
+              "scores": {"relevance": 0.8, "creativity": 0.9, "safety": 0.9, "cost": 0.5},
+              "composite_score": 0.79,
+              "rank": 2,
+              "recommended": true,
+              "reasons": ["Highest creativity score", "Strong technical approach", "Higher computational cost"]
+            }
+          ],
+          "call_metadata": {"provider": "openai", "model": "gpt-4", "latency_ms": 900, "tokens": 180}
+        }
+      }
+    ]
+  },
+
+  "graph_manager": {
+    "node_operations": [
+      {
+        "input": {
+          "session_id": "demo_001",
+          "ops": [
+            {
+              "op": "create_node",
+              "payload": {
+                "id": "node_lighthouse_001",
+                "type": "STRUCTURE",
+                "title": "Mars Lighthouse",
+                "text": "Automated beacon structure on Mars surface providing navigation guidance",
+                "embedding": [0.1, 0.2, 0.3, 0.4, 0.5]
+              }
+            },
+            {
+              "op": "create_node", 
+              "payload": {
+                "id": "node_mars_001",
+                "type": "LOCATION",
+                "title": "Mars",
+                "text": "Fourth planet from the Sun, known for its red appearance due to iron oxide",
+                "embedding": [0.2, 0.3, 0.4, 0.5, 0.6]
+              }
+            }
+          ],
+          "merge_threshold": 0.82,
+          "prune_policy": {"min_score": 0.05}
+        },
+        "output": {
+          "session_id": "demo_001",
+          "applied_ops": [
+            {"op": "create_node", "node_id": "node_lighthouse_001", "status": "success"},
+            {"op": "create_node", "node_id": "node_mars_001", "status": "success"}
+          ],
+          "merged_nodes": [],
+          "pruned_nodes": [],
+          "node_count": 2,
+          "edge_count": 0,
+          "call_metadata": {"provider": "local", "model": "graph_engine", "latency_ms": 150, "tokens": 0}
+        }
+      }
+    ]
+  },
+
+  "session_manager": {
+    "orchestration": [
+      {
+        "input": {
+          "session_id": "demo_001",
+          "topic": "story",
+          "topic_descriptor": "sci-fi lighthouse on Mars",
+          "mode": "creative",
+          "user_constraints": {"max_length": "short", "style": "detailed"}
+        },
+        "output": {
+          "session_id": "demo_001",
+          "plan_id": "plan_001",
+          "agents_sequence": ["perception", "planner", "verifier", "evaluator"],
+          "prompts": {
+            "perception": {
+              "agent_name": "perception",
+              "temperature": 0.3,
+              "output_schema": {"type": "object", "required": ["session_id", "summary_short"]}
+            },
+            "planner": {
+              "agent_name": "planner", 
+              "temperature": 0.7,
+              "output_schema": {"type": "object", "required": ["session_id", "branches"]}
+            }
+          },
+          "created_at": "2025-09-01T10:00:00Z",
+          "call_metadata": {"provider": "local", "model": "session_orchestrator", "latency_ms": 50, "tokens": 0}
+        }
+      }
+    ]
+  }
+}

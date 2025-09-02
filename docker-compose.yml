@@ -1,0 +1,116 @@
+version: '3.8'
+
+services:
+  arangodb:
+    image: arangodb/arangodb:3.11
+    container_name: human_ai_arangodb
+    environment:
+      - ARANGO_ROOT_PASSWORD=password
+      - ARANGO_ENV=development
+    ports:
+      - "8529:8529"
+    volumes:
+      - arango_data:/var/lib/arangodb3
+      - arango_apps:/var/lib/arangodb3-apps
+      - ./docker/arangodb-init.js:/docker-entrypoint-initdb.d/arangodb-init.js:ro
+    networks:
+      - human_ai_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8529/_api/version"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  mongodb:
+    image: mongo:7.0
+    container_name: human_ai_mongodb
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=root
+      - MONGO_INITDB_ROOT_PASSWORD=password
+      - MONGO_ENV=development
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+      - ./docker/mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
+    networks:
+      - human_ai_network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  redis:
+    image: redis:7.2-alpine
+    container_name: human_ai_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - human_ai_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    container_name: human_ai_server
+    ports:
+      - "8000:8000"
+    environment:
+      - MONGO_URI=mongodb://root:password@mongodb:27017/human_ai_cocreation?authSource=admin
+      - ARANGO_URL=http://arangodb:8529
+      - ARANGO_USER=root
+      - ARANGO_PASSWORD=password
+      - ARANGO_DATABASE=human_ai_cocreation
+      - REDIS_URL=redis://redis:6379
+      - DEBUG=true
+    volumes:
+      - ./data:/app/data
+      - ./.env:/app/.env
+    networks:
+      - human_ai_network
+    depends_on:
+      arangodb:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  frontend:
+    build:
+      context: ./web
+      dockerfile: ../Dockerfile.frontend
+    container_name: human_ai_frontend
+    ports:
+      - "3000:80"
+    environment:
+      - REACT_APP_API_URL=http://localhost:8000
+    networks:
+      - human_ai_network
+    depends_on:
+      - server
+    restart: unless-stopped
+
+volumes:
+  arango_data:
+  arango_apps:
+  mongo_data:
+  redis_data:
+
+networks:
+  human_ai_network:
+    driver: bridge
