@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 
-const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8001';
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
 
 const Callback = ({ onAuthSuccess, onAuthFailure }) => {
   const [status, setStatus] = useState('processing'); // processing, validating, exchanging, success, error

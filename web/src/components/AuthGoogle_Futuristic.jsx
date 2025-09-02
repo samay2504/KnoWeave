@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8001';
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
 
 const AuthGoogle = ({ onAuthStart, onAuthComplete, onAuthError }) => {
   const [isLoading, setIsLoading] = useState(false);
