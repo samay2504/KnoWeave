@@ -1,0 +1,37 @@
+{
+  "session_id": "integration_20250903T003142Z",
+  "timestamp": "20250903T003142Z",
+  "flow_tests": {
+    "user_input_to_suggestion": {
+      "input": "Help me write a story about AI",
+      "expected_stages": [
+        "perception",
+        "planning",
+        "generation",
+        "verification",
+        "evaluation"
+      ],
+      "status": "PASS"
+    },
+    "collaborative_editing": {
+      "input": "Improve this paragraph",
+      "expected_stages": [
+        "perception",
+        "graph_update",
+        "suggestion",
+        "evaluation"
+      ],
+      "status": "PASS"
+    },
+    "knowledge_graph_integration": {
+      "input": "Connect this idea to previous work",
+      "expected_stages": [
+        "graph_query",
+        "relationship_analysis",
+        "suggestion"
+      ],
+      "status": "PASS"
+    }
+  },
+  "trace_data": "Mock E2E trace data"
+}

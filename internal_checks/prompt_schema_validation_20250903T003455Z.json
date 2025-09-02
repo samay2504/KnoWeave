@@ -1,0 +1,133 @@
+{
+  "timestamp": "20250903T003455Z",
+  "validation_results": {
+    "perception": {
+      "status": "PASS",
+      "schema_valid": true,
+      "test_data": {
+        "tokens": [
+          "hello",
+          "world",
+          "AI"
+        ],
+        "pos_tags": [
+          "INTJ",
+          "NOUN",
+          "NOUN"
+        ],
+        "entities": [
+          {
+            "text": "AI",
+            "label": "ORG",
+            "start": 0,
+            "end": 2
+          }
+        ],
+        "tone": "friendly",
+        "pov": "first_person",
+        "summary": "User greeting about AI collaboration",
+        "metadata": {
+          "confidence": 0.95,
+          "language": "en"
+        }
+      }
+    },
+    "verification": {
+      "status": "PASS",
+      "schema_valid": true,
+      "test_data": {
+        "grammar_score": 0.95,
+        "pov_consistent": true,
+        "character_consistent": true,
+        "verified_facts": [
+          "AI collaboration is beneficial"
+        ],
+        "unverified_facts": [],
+        "violations": [],
+        "suggestions": [
+          "Consider adding more detail"
+        ]
+      }
+    },
+    "evaluation": {
+      "status": "PASS",
+      "schema_valid": true,
+      "test_data": {
+        "coherence_score": 8.5,
+        "causal_strength": 0.8,
+        "character_consistency": 0.9,
+        "factual_accuracy": 0.95,
+        "novelty_score": 0.7,
+        "acceptability_score": 8.0,
+        "ranking": 1
+      }
+    }
+  },
+  "summary": {
+    "schema_validations": {
+      "perception": {
+        "status": "PASS",
+        "schema_valid": true,
+        "test_data": {
+          "tokens": [
+            "hello",
+            "world",
+            "AI"
+          ],
+          "pos_tags": [
+            "INTJ",
+            "NOUN",
+            "NOUN"
+          ],
+          "entities": [
+            {
+              "text": "AI",
+              "label": "ORG",
+              "start": 0,
+              "end": 2
+            }
+          ],
+          "tone": "friendly",
+          "pov": "first_person",
+          "summary": "User greeting about AI collaboration",
+          "metadata": {
+            "confidence": 0.95,
+            "language": "en"
+          }
+        }
+      },
+      "verification": {
+        "status": "PASS",
+        "schema_valid": true,
+        "test_data": {
+          "grammar_score": 0.95,
+          "pov_consistent": true,
+          "character_consistent": true,
+          "verified_facts": [
+            "AI collaboration is beneficial"
+          ],
+          "unverified_facts": [],
+          "violations": [],
+          "suggestions": [
+            "Consider adding more detail"
+          ]
+        }
+      },
+      "evaluation": {
+        "status": "PASS",
+        "schema_valid": true,
+        "test_data": {
+          "coherence_score": 8.5,
+          "causal_strength": 0.8,
+          "character_consistency": 0.9,
+          "factual_accuracy": 0.95,
+          "novelty_score": 0.7,
+          "acceptability_score": 8.0,
+          "ranking": 1
+        }
+      }
+    },
+    "total_schemas_tested": 3,
+    "schemas_passed": 3
+  }
+}

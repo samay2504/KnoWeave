@@ -1,0 +1,329 @@
+{
+  "test_id": "prompt_schema_20250902_231328",
+  "timestamp": "2025-09-02T23:13:28.661330",
+  "validations": {
+    "agent_prompts": {
+      "perception": {
+        "agent_name": "perception",
+        "structure_valid": false,
+        "missing_keys": [
+          "agent_name",
+          "session_id",
+          "topic",
+          "canonical_examples",
+          "input_schema",
+          "output_schema",
+          "instructions"
+        ],
+        "content_checks": {
+          "required_content": {
+            "expected": [
+              "entity extraction",
+              "relationship identification",
+              "semantic analysis"
+            ],
+            "found": [],
+            "coverage": 0.0
+          },
+          "input_schema": {
+            "expected_types": [
+              "text",
+              "content"
+            ],
+            "schema_fields": [],
+            "has_required_inputs": false
+          },
+          "output_schema": {
+            "expected_format": "structured_entities",
+            "schema_defined": false,
+            "format_matches": false
+          },
+          "canonical_examples": {
+            "examples_provided": 0,
+            "examples_valid": true,
+            "sufficient_examples": false
+          }
+        },
+        "errors": []
+      },
+      "planner": {
+        "agent_name": "planner",
+        "structure_valid": false,
+        "missing_keys": [
+          "agent_name",
+          "session_id",
+          "topic",
+          "canonical_examples",
+          "input_schema",
+          "output_schema",
+          "instructions"
+        ],
+        "content_checks": {
+          "required_content": {
+            "expected": [
+              "plan generation",
+              "action sequencing",
+              "objective alignment"
+            ],
+            "found": [],
+            "coverage": 0.0
+          },
+          "input_schema": {
+            "expected_types": [
+              "entities",
+              "relationships"
+            ],
+            "schema_fields": [],
+            "has_required_inputs": false
+          },
+          "output_schema": {
+            "expected_format": "execution_plan",
+            "schema_defined": false,
+            "format_matches": false
+          },
+          "canonical_examples": {
+            "examples_provided": 0,
+            "examples_valid": true,
+            "sufficient_examples": false
+          }
+        },
+        "errors": []
+      },
+      "graph_manager": {
+        "agent_name": "graph_manager",
+        "structure_valid": false,
+        "missing_keys": [
+          "agent_name",
+          "session_id",
+          "topic",
+          "canonical_examples",
+          "input_schema",
+          "output_schema",
+          "instructions"
+        ],
+        "content_checks": {
+          "required_content": {
+            "expected": [
+              "node creation",
+              "edge formation",
+              "graph optimization"
+            ],
+            "found": [],
+            "coverage": 0.0
+          },
+          "input_schema": {
+            "expected_types": [
+              "entities",
+              "plan"
+            ],
+            "schema_fields": [],
+            "has_required_inputs": false
+          },
+          "output_schema": {
+            "expected_format": "graph_updates",
+            "schema_defined": false,
+            "format_matches": false
+          },
+          "canonical_examples": {
+            "examples_provided": 0,
+            "examples_valid": true,
+            "sufficient_examples": false
+          }
+        },
+        "errors": []
+      },
+      "verifier": {
+        "agent_name": "verifier",
+        "structure_valid": false,
+        "missing_keys": [
+          "agent_name",
+          "session_id",
+          "topic",
+          "canonical_examples",
+          "input_schema",
+          "output_schema",
+          "instructions"
+        ],
+        "content_checks": {
+          "required_content": {
+            "expected": [
+              "consistency check",
+              "validation rules",
+              "quality assessment"
+            ],
+            "found": [],
+            "coverage": 0.0
+          },
+          "input_schema": {
+            "expected_types": [
+              "graph_state",
+              "content"
+            ],
+            "schema_fields": [],
+            "has_required_inputs": false
+          },
+          "output_schema": {
+            "expected_format": "verification_report",
+            "schema_defined": false,
+            "format_matches": false
+          },
+          "canonical_examples": {
+            "examples_provided": 0,
+            "examples_valid": true,
+            "sufficient_examples": false
+          }
+        },
+        "errors": []
+      },
+      "evaluator": {
+        "agent_name": "evaluator",
+        "structure_valid": false,
+        "missing_keys": [
+          "agent_name",
+          "session_id",
+          "topic",
+          "canonical_examples",
+          "input_schema",
+          "output_schema",
+          "instructions"
+        ],
+        "content_checks": {
+          "required_content": {
+            "expected": [
+              "ranking criteria",
+              "scoring mechanism",
+              "comparative analysis"
+            ],
+            "found": [],
+            "coverage": 0.0
+          },
+          "input_schema": {
+            "expected_types": [
+              "branches",
+              "alternatives"
+            ],
+            "schema_fields": [],
+            "has_required_inputs": false
+          },
+          "output_schema": {
+            "expected_format": "ranked_results",
+            "schema_defined": false,
+            "format_matches": false
+          },
+          "canonical_examples": {
+            "examples_provided": 0,
+            "examples_valid": true,
+            "sufficient_examples": false
+          }
+        },
+        "errors": []
+      },
+      "summary": {
+        "total_agents": 5,
+        "valid_prompts": 0,
+        "success_rate": 0.0
+      }
+    },
+    "topic_coverage": {
+      "renewable_energy": {
+        "topic": "renewable energy",
+        "prompt_generated": true,
+        "topic_mentioned": false,
+        "descriptor_mentioned": false,
+        "relevant_content": false
+      },
+      "healthcare_innovation": {
+        "topic": "healthcare innovation",
+        "prompt_generated": true,
+        "topic_mentioned": false,
+        "descriptor_mentioned": false,
+        "relevant_content": false
+      },
+      "autonomous_vehicles": {
+        "topic": "autonomous vehicles",
+        "prompt_generated": true,
+        "topic_mentioned": false,
+        "descriptor_mentioned": false,
+        "relevant_content": false
+      },
+      "artificial_intelligence": {
+        "topic": "artificial intelligence",
+        "prompt_generated": true,
+        "topic_mentioned": false,
+        "descriptor_mentioned": false,
+        "relevant_content": false
+      },
+      "summary": {
+        "total_topics": 4,
+        "successful_topics": 0,
+        "coverage_rate": 0.0
+      }
+    },
+    "mode_variations": {
+      "focused": {
+        "mode": "focused",
+        "prompt_generated": true,
+        "mode_indicators": [
+          "specific",
+          "targeted",
+          "precise",
+          "narrow"
+        ],
+        "mode_influence_detected": false,
+        "instruction_length": 0
+      },
+      "balanced": {
+        "mode": "balanced",
+        "prompt_generated": true,
+        "mode_indicators": [
+          "balanced",
+          "comprehensive",
+          "moderate",
+          "measured"
+        ],
+        "mode_influence_detected": false,
+        "instruction_length": 0
+      },
+      "exploratory": {
+        "mode": "exploratory",
+        "prompt_generated": true,
+        "mode_indicators": [
+          "explore",
+          "creative",
+          "innovative",
+          "broad"
+        ],
+        "mode_influence_detected": false,
+        "instruction_length": 0
+      },
+      "conservative": {
+        "mode": "conservative",
+        "prompt_generated": true,
+        "mode_indicators": [
+          "conservative",
+          "careful",
+          "safe",
+          "proven"
+        ],
+        "mode_influence_detected": false,
+        "instruction_length": 0
+      },
+      "summary": {
+        "total_modes": 4,
+        "successful_modes": 0,
+        "adaptation_rate": 0.0
+      }
+    },
+    "session_consistency": {
+      "sessions_tested": 3,
+      "structural_consistency": true,
+      "content_similarity": 0.0,
+      "consistency_threshold_met": false
+    }
+  },
+  "overall_status": "PARTIAL_FAILURE",
+  "errors": [],
+  "success_rate": 0.0,
+  "passed_validations": 0,
+  "total_validations": 4
+}

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-ArangoDB Management Script
-Helps manage ArangoDB server and database setup
+ArangoDB Management Script with Authentication
+Helps manage ArangoDB server and database setup using environment variables
 """
 
 import asyncio
@@ -10,9 +10,19 @@ import os
 import subprocess
 from pathlib import Path
 
+# Load environment variables
+from dotenv import load_dotenv
+load_dotenv()
+
 # Add server directory to path
 server_dir = Path(__file__).parent / "server"
 sys.path.append(str(server_dir))
+
+# Get configuration from environment
+ARANGO_URL = os.getenv("ARANGO_URL", "http://localhost:8529")
+ARANGO_USER = os.getenv("ARANGO_USER", "root")
+ARANGO_PASSWORD = os.getenv("ARANGO_PASSWORD", "samay2504")
+ARANGO_DATABASE = os.getenv("ARANGO_DATABASE", "human_ai_co_create")
 
 async def check_docker():
     """Check if Docker is available"""
@@ -65,26 +75,67 @@ async def start_arangodb():
         return False
 
 async def test_arango_connection():
-    """Test ArangoDB connection"""
+    """Test ArangoDB connection with environment credentials"""
     try:
-        from db.arango_client import create_arango_client
-        config = {
-            'url': 'http://localhost:8529',
-            'user': 'root', 
-            'password': 'samay2504',
-            'database': 'human_ai_co_create'
-        }
-        
         print("🔍 Testing ArangoDB connection...")
-        client = await create_arango_client(config)
-        if client:
-            print("✅ ArangoDB connection successful!")
-            return True
-        else:
-            print("❌ ArangoDB connection failed")
-            return False
+        print(f"   URL: {ARANGO_URL}")
+        print(f"   User: {ARANGO_USER}")
+        print(f"   Database: {ARANGO_DATABASE}")
+        
+        try:
+            from db.arango_client import create_arango_client
+            config = {
+                'url': ARANGO_URL,
+                'user': ARANGO_USER, 
+                'password': ARANGO_PASSWORD,
+                'database': ARANGO_DATABASE
+            }
+            
+            client = await create_arango_client(config)
+            if client and hasattr(client, 'connected') and client.connected:
+                print("✅ ArangoDB connection successful!")
+                return True
+            else:
+                print("❌ ArangoDB connection failed")
+                return False
+        except ImportError:
+            # Fallback to direct connection test
+            return await test_direct_connection()
+            
     except Exception as e:
         print(f"❌ Connection test error: {e}")
+        return False
+
+async def test_direct_connection():
+    """Test direct ArangoDB connection using arango library"""
+    try:
+        from arango import ArangoClient as SyncArangoClient
+        
+        client = SyncArangoClient(hosts=ARANGO_URL)
+        
+        # Connect to _system database first
+        sys_db = client.db(
+            name="_system",
+            username=ARANGO_USER,
+            password=ARANGO_PASSWORD,
+        )
+        
+        # Test connection
+        version = sys_db.version()
+        print(f"✅ ArangoDB version: {version}")
+        
+        # Check/create our database
+        if not sys_db.has_database(ARANGO_DATABASE):
+            print(f"📝 Creating database: {ARANGO_DATABASE}")
+            sys_db.create_database(ARANGO_DATABASE)
+            print(f"✅ Database {ARANGO_DATABASE} created successfully")
+        else:
+            print(f"✅ Database {ARANGO_DATABASE} already exists")
+            
+        return True
+        
+    except Exception as e:
+        print(f"❌ Direct connection test failed: {e}")
         return False
 
 async def create_database():

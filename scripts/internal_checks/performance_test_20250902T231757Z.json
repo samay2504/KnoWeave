@@ -1,0 +1,144 @@
+{
+  "test_id": "performance_20250902_231728",
+  "timestamp": "2025-09-02T23:17:28.807229",
+  "system_info": {
+    "cpu_count": 16,
+    "memory_total_gb": 15.4,
+    "memory_available_gb": 2.22,
+    "python_version": "3.12.5 (tags/v3.12.5:ff3bc82, Aug  6 2024, 20:45:27) [MSC v.1940 64 bit (AMD64)]",
+    "platform": "win32"
+  },
+  "performance_tests": {
+    "response_times": {
+      "perception": {
+        "response_time_ms": 727.84,
+        "memory_used_mb": 45.8,
+        "success": true,
+        "within_threshold": true,
+        "memory_efficient": true
+      },
+      "planner": {
+        "response_time_ms": 0.0,
+        "memory_used_mb": 0.0,
+        "success": true,
+        "within_threshold": true,
+        "memory_efficient": true
+      },
+      "graph_manager": {
+        "response_time_ms": 0.0,
+        "memory_used_mb": 0.0,
+        "success": true,
+        "within_threshold": true,
+        "memory_efficient": true
+      },
+      "verifier": {
+        "response_time_ms": 2.52,
+        "memory_used_mb": 0.0,
+        "success": true,
+        "within_threshold": true,
+        "memory_efficient": true
+      },
+      "evaluator": {
+        "response_time_ms": 3.5,
+        "memory_used_mb": 0.0,
+        "success": true,
+        "within_threshold": true,
+        "memory_efficient": true
+      },
+      "summary": {
+        "total_agents": 5,
+        "successful_agents": 5,
+        "success_rate": 1.0,
+        "avg_response_time": 244.62
+      }
+    },
+    "concurrent_load": {
+      "concurrent_users": 3,
+      "requests_per_user": 2,
+      "total_requests": 6,
+      "successful_requests": 6,
+      "success_rate": 1.0,
+      "total_time_seconds": 0.14,
+      "throughput_req_per_sec": 42.73,
+      "avg_response_time_ms": 15.66,
+      "max_response_time_ms": 32.85,
+      "cpu_usage_increase": -22.3,
+      "throughput_meets_threshold": true
+    },
+    "memory_usage": {
+      "perception": {
+        "memory_before_mb": 522.83,
+        "memory_after_mb": 522.83,
+        "memory_used_mb": 0.0,
+        "memory_after_gc_mb": 522.83,
+        "memory_released_mb": 0.0,
+        "memory_efficient": true,
+        "memory_leak_detected": false
+      },
+      "planner": {
+        "memory_before_mb": 522.83,
+        "memory_after_mb": 522.83,
+        "memory_used_mb": 0.0,
+        "memory_after_gc_mb": 522.83,
+        "memory_released_mb": 0.0,
+        "memory_efficient": true,
+        "memory_leak_detected": false
+      },
+      "graph_manager": {
+        "memory_before_mb": 522.83,
+        "memory_after_mb": 522.83,
+        "memory_used_mb": 0.0,
+        "memory_after_gc_mb": 522.83,
+        "memory_released_mb": 0.0,
+        "memory_efficient": true,
+        "memory_leak_detected": false
+      },
+      "verifier": {
+        "memory_before_mb": 522.83,
+        "memory_after_mb": 522.83,
+        "memory_used_mb": 0.0,
+        "memory_after_gc_mb": 522.83,
+        "memory_released_mb": 0.0,
+        "memory_efficient": true,
+        "memory_leak_detected": false
+      },
+      "evaluator": {
+        "memory_before_mb": 522.83,
+        "memory_after_mb": 522.83,
+        "memory_used_mb": 0.0,
+        "memory_after_gc_mb": 522.83,
+        "memory_released_mb": 0.0,
+        "memory_efficient": true,
+        "memory_leak_detected": false
+      },
+      "summary": {
+        "initial_memory_mb": 522.83,
+        "final_memory_mb": 522.83,
+        "total_agents": 5,
+        "efficient_agents": 5,
+        "efficiency_rate": 1.0
+      }
+    },
+    "stress_conditions": {
+      "large_input": {
+        "input_size_kb": 8.79,
+        "response_time_ms": 6.56,
+        "success": true,
+        "within_threshold": true
+      },
+      "rapid_requests": {
+        "total_requests": 5,
+        "successful_requests": 5,
+        "success_rate": 1.0,
+        "avg_response_time_ms": 5.75,
+        "max_response_time_ms": 7.039308547973633,
+        "within_threshold": true
+      }
+    }
+  },
+  "overall_status": "SUCCESS",
+  "errors": [],
+  "success_rate": 1.0,
+  "passed_tests": 4,
+  "total_tests": 4
+}

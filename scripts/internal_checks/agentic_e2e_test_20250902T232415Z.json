@@ -1,0 +1,22 @@
+{
+  "test_id": "e2e_test_20250902_232403",
+  "timestamp": "2025-09-02T23:24:03.399848",
+  "scenario": {
+    "topic": "sustainable_urban_planning",
+    "user_input": "How can we design eco-friendly transportation systems for smart cities?",
+    "expected_agents": [
+      "session_manager",
+      "perception",
+      "planner",
+      "graph_manager",
+      "verifier",
+      "evaluator"
+    ],
+    "test_mode": true
+  },
+  "agent_results": {},
+  "integration_status": "SETUP_FAILED",
+  "errors": [
+    "Setup error: 2 validation errors for ServerConfig\nbackend_port\n  Extra inputs are not permitted [type=extra_forbidden, input_value='8000', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.9/v/extra_forbidden\nfrontend_port\n  Extra inputs are not permitted [type=extra_forbidden, input_value='3000', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.9/v/extra_forbidden"
+  ]
+}

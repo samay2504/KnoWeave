@@ -1,0 +1,61 @@
+{
+  "test_id": "graph_test_20250902_230846",
+  "timestamp": "2025-09-02T23:08:46.589965",
+  "checks": {
+    "arango_persistence": {
+      "status": "SKIPPED",
+      "reason": "ArangoDB not available"
+    },
+    "mongo_persistence": {
+      "status": "SUCCESS",
+      "document_inserted": true,
+      "document_found": false,
+      "persistence_verified": false
+    },
+    "json_fallback": {
+      "status": "SUCCESS",
+      "file_created": true,
+      "file_readable": true,
+      "content_valid": true,
+      "persistence_verified": true,
+      "backup_path": "data\\backups\\graph_test_20250902_230846\\graph_snapshot.json"
+    },
+    "merge_operations": {
+      "status": "SUCCESS",
+      "original_nodes": 3,
+      "canonical_nodes": 2,
+      "duplicates_merged": 1,
+      "merge_verified": true
+    },
+    "prune_operations": {
+      "status": "SUCCESS",
+      "original_nodes": 4,
+      "remaining_nodes": 2,
+      "removed_nodes": 2,
+      "prune_verified": true
+    },
+    "backtrack_operations": {
+      "status": "SUCCESS",
+      "snapshots_available": 3,
+      "current_state": {
+        "nodes": 15,
+        "edges": 22
+      },
+      "target_snapshot": {
+        "timestamp": "2025-09-02T18:10:00Z",
+        "nodes": 8,
+        "edges": 12
+      },
+      "restored_state": {
+        "nodes": 8,
+        "edges": 12
+      },
+      "backtrack_verified": true
+    }
+  },
+  "overall_status": "SUCCESS",
+  "errors": [],
+  "success_rate": 1.0,
+  "passed_checks": 6,
+  "total_checks": 6
+}

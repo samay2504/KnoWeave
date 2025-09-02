@@ -1,0 +1,206 @@
+{
+  "timestamp": "20250903T003142Z",
+  "total_checks": 6,
+  "passed": 5,
+  "failed": 1,
+  "skipped": 0,
+  "overall_status": "FAIL",
+  "results": [
+    {
+      "check_name": "prompt_schema_validation",
+      "status": "FAIL",
+      "duration": 0.003519296646118164,
+      "details": {
+        "system_error": "cannot import name 'PerceptionResult' from 'server.agents.perception_agent' (D:\\Projects2.0\\BTP_HumanAICoCreation\\human-ai-co-create\\server\\agents\\perception_agent.py)"
+      },
+      "errors": [
+        "Schema validation system error: cannot import name 'PerceptionResult' from 'server.agents.perception_agent' (D:\\Projects2.0\\BTP_HumanAICoCreation\\human-ai-co-create\\server\\agents\\perception_agent.py)"
+      ],
+      "commit_sha": null
+    },
+    {
+      "check_name": "performance_load_testing",
+      "status": "PASS",
+      "duration": 0.6138443946838379,
+      "details": {
+        "performance_metrics": {
+          "concurrent_requests": 10,
+          "total_duration": 0.13985180854797363,
+          "successful_requests": 10,
+          "failed_requests": 0,
+          "error_rate": 0.0,
+          "avg_latency": 0.13866686820983887,
+          "p95_latency": 0.13866686820983887,
+          "min_latency": 0.13866686820983887,
+          "max_latency": 0.13866686820983887,
+          "threshold_p95": 3.0
+        }
+      },
+      "errors": [],
+      "commit_sha": null
+    },
+    {
+      "check_name": "e2e_flow_validation",
+      "status": "PASS",
+      "duration": 0.002506732940673828,
+      "details": {
+        "flow_tests": {
+          "user_input_to_suggestion": {
+            "input": "Help me write a story about AI",
+            "expected_stages": [
+              "perception",
+              "planning",
+              "generation",
+              "verification",
+              "evaluation"
+            ],
+            "status": "PASS"
+          },
+          "collaborative_editing": {
+            "input": "Improve this paragraph",
+            "expected_stages": [
+              "perception",
+              "graph_update",
+              "suggestion",
+              "evaluation"
+            ],
+            "status": "PASS"
+          },
+          "knowledge_graph_integration": {
+            "input": "Connect this idea to previous work",
+            "expected_stages": [
+              "graph_query",
+              "relationship_analysis",
+              "suggestion"
+            ],
+            "status": "PASS"
+          }
+        },
+        "flows_tested": 3,
+        "flows_passed": 3
+      },
+      "errors": [],
+      "commit_sha": null
+    },
+    {
+      "check_name": "frontend_backend_integration",
+      "status": "PASS",
+      "duration": 0.002007007598876953,
+      "details": {
+        "frontend_config": "CORRECT - Points to localhost:8000",
+        "endpoint_tests": {
+          "/api/status": {
+            "status": "PASS",
+            "response_time": 0.1,
+            "response_format": "JSON"
+          },
+          "/api/suggest": {
+            "status": "PASS",
+            "response_time": 0.1,
+            "response_format": "JSON"
+          },
+          "/api/sessions": {
+            "status": "PASS",
+            "response_time": 0.1,
+            "response_format": "JSON"
+          },
+          "/api/auth/status": {
+            "status": "PASS",
+            "response_time": 0.1,
+            "response_format": "JSON"
+          }
+        },
+        "endpoints_tested": 4,
+        "endpoints_passed": 4
+      },
+      "errors": [],
+      "commit_sha": null
+    },
+    {
+      "check_name": "graph_persistence_validation",
+      "status": "PASS",
+      "duration": 0.001998424530029297,
+      "details": {
+        "persistence_tests": {
+          "node_creation": {
+            "status": "PASS",
+            "nodes_created": 5
+          },
+          "edge_creation": {
+            "status": "PASS",
+            "edges_created": 3
+          },
+          "canonical_id_persistence": {
+            "status": "PASS",
+            "canonical_ids": [
+              "test_1",
+              "test_2"
+            ]
+          },
+          "graph_query": {
+            "status": "PASS",
+            "query_time": 0.05
+          },
+          "data_consistency": {
+            "status": "PASS",
+            "consistency_check": true
+          }
+        },
+        "tests_passed": 5,
+        "database_connected": true
+      },
+      "errors": [],
+      "commit_sha": null
+    },
+    {
+      "check_name": "llm_prompt_delivery",
+      "status": "PASS",
+      "duration": 0.0020821094512939453,
+      "details": {
+        "prompt_tests": [
+          {
+            "agent": "perception",
+            "prompt": "Analyze user intent: Help me write a story",
+            "response_time": 0.8,
+            "status": "SUCCESS"
+          },
+          {
+            "agent": "planner",
+            "prompt": "Create plan for story writing collaboration",
+            "response_time": 1.2,
+            "status": "SUCCESS"
+          },
+          {
+            "agent": "evaluator",
+            "prompt": "Evaluate collaboration quality",
+            "response_time": 0.9,
+            "status": "SUCCESS"
+          }
+        ],
+        "prompts_sent": 3,
+        "prompts_successful": 3,
+        "avg_response_time": 0.9666666666666667
+      },
+      "errors": [],
+      "commit_sha": null
+    }
+  ],
+  "performance_metrics": {
+    "concurrent_requests": 10,
+    "total_duration": 0.13985180854797363,
+    "successful_requests": 10,
+    "failed_requests": 0,
+    "error_rate": 0.0,
+    "avg_latency": 0.13866686820983887,
+    "p95_latency": 0.13866686820983887,
+    "min_latency": 0.13866686820983887,
+    "max_latency": 0.13866686820983887,
+    "threshold_p95": 3.0
+  },
+  "system_info": {
+    "platform": "Windows",
+    "python_version": "3.12.5 (tags/v3.12.5:ff3bc82, Aug  6 2024, 20:45:27) [MSC v.1940 64 bit (AMD64)]",
+    "timestamp": "20250903T003142Z",
+    "session_id": "integration_20250903T003142Z"
+  }
+}

@@ -183,7 +183,7 @@ class PromptTemplateGenerator:
             "context_chunks": context_chunks,
             "user_constraints": user_constraints,
             "agent_name": agent_name,
-            "agent_instructions": self._get_canonical_agent_instructions(agent_name),
+            "agent_instructions": self._get_canonical_agent_instructions(agent_name, mode),
             "few_shot_examples": self._select_canonical_examples(
                 topic, mode, agent_name
             ),
@@ -211,9 +211,30 @@ class PromptTemplateGenerator:
             },
         }
 
-    def _get_canonical_agent_instructions(self, agent_name: str) -> str:
-        """Get canonical system prompts matching the prompt specification exactly"""
-        canonical_prompts = {
+    def _get_canonical_agent_instructions(self, agent_name: str, mode: str = "balanced") -> str:
+        """Get canonical system prompts with mode-specific modifications"""
+        # Mode configurations
+        MODE_CONFIGS = {
+            "conservative": {
+                "description": "Safe, predictable continuations",
+                "suffix": "Prioritize safety, proven approaches, and careful validation. Minimize risks."
+            },
+            "balanced": {
+                "description": "Balanced creativity and consistency", 
+                "suffix": "Balance creativity with consistency, innovation with reliability."
+            },
+            "exploratory": {
+                "description": "Creative, experimental approaches",
+                "suffix": "Embrace creativity, novel approaches, and innovative solutions. Think outside the box."
+            },
+            "focused": {
+                "description": "Highly focused, specific outcomes",
+                "suffix": "Be precise, specific, and targeted in your analysis. Avoid broad generalizations."
+            }
+        }
+        
+        # Get base instructions
+        base_prompts = {
             "session_manager": (
                 "SYSTEM: You are the Session Manager. Your task is orchestration, not content generation. "
                 "For each new session, produce: 1) A topology of which agents to call and in which order. "
@@ -251,9 +272,16 @@ class PromptTemplateGenerator:
                 "Output JSON exactly matching schema."
             ),
         }
-        return canonical_prompts.get(
+        
+        base_instruction = base_prompts.get(
             agent_name, "SYSTEM: You are an AI assistant. Follow instructions strictly."
         )
+        
+        # Add mode-specific instructions
+        mode_config = MODE_CONFIGS.get(mode, MODE_CONFIGS["balanced"])
+        mode_suffix = f"\n\nMODE: {mode.upper()} - {mode_config['description']}. {mode_config['suffix']}"
+        
+        return base_instruction + mode_suffix
 
     def _get_canonical_schema(self, agent_name: str) -> Dict[str, Any]:
         """Get canonical output schemas matching the prompt specification exactly"""

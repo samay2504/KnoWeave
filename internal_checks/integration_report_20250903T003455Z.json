@@ -1,0 +1,268 @@
+{
+  "timestamp": "20250903T003455Z",
+  "total_checks": 6,
+  "passed": 6,
+  "failed": 0,
+  "skipped": 0,
+  "overall_status": "PASS",
+  "results": [
+    {
+      "check_name": "prompt_schema_validation",
+      "status": "PASS",
+      "duration": 0.0030145645141601562,
+      "details": {
+        "schema_validations": {
+          "perception": {
+            "status": "PASS",
+            "schema_valid": true,
+            "test_data": {
+              "tokens": [
+                "hello",
+                "world",
+                "AI"
+              ],
+              "pos_tags": [
+                "INTJ",
+                "NOUN",
+                "NOUN"
+              ],
+              "entities": [
+                {
+                  "text": "AI",
+                  "label": "ORG",
+                  "start": 0,
+                  "end": 2
+                }
+              ],
+              "tone": "friendly",
+              "pov": "first_person",
+              "summary": "User greeting about AI collaboration",
+              "metadata": {
+                "confidence": 0.95,
+                "language": "en"
+              }
+            }
+          },
+          "verification": {
+            "status": "PASS",
+            "schema_valid": true,
+            "test_data": {
+              "grammar_score": 0.95,
+              "pov_consistent": true,
+              "character_consistent": true,
+              "verified_facts": [
+                "AI collaboration is beneficial"
+              ],
+              "unverified_facts": [],
+              "violations": [],
+              "suggestions": [
+                "Consider adding more detail"
+              ]
+            }
+          },
+          "evaluation": {
+            "status": "PASS",
+            "schema_valid": true,
+            "test_data": {
+              "coherence_score": 8.5,
+              "causal_strength": 0.8,
+              "character_consistency": 0.9,
+              "factual_accuracy": 0.95,
+              "novelty_score": 0.7,
+              "acceptability_score": 8.0,
+              "ranking": 1
+            }
+          }
+        },
+        "total_schemas_tested": 3,
+        "schemas_passed": 3
+      },
+      "errors": [],
+      "commit_sha": null
+    },
+    {
+      "check_name": "performance_load_testing",
+      "status": "PASS",
+      "duration": 0.6550471782684326,
+      "details": {
+        "performance_metrics": {
+          "concurrent_requests": 10,
+          "total_duration": 0.1147925853729248,
+          "successful_requests": 10,
+          "failed_requests": 0,
+          "error_rate": 0.0,
+          "avg_latency": 0.1147925853729248,
+          "p95_latency": 0.1147925853729248,
+          "min_latency": 0.1147925853729248,
+          "max_latency": 0.1147925853729248,
+          "threshold_p95": 3.0
+        }
+      },
+      "errors": [],
+      "commit_sha": null
+    },
+    {
+      "check_name": "e2e_flow_validation",
+      "status": "PASS",
+      "duration": 0.012246370315551758,
+      "details": {
+        "flow_tests": {
+          "user_input_to_suggestion": {
+            "input": "Help me write a story about AI",
+            "expected_stages": [
+              "perception",
+              "planning",
+              "generation",
+              "verification",
+              "evaluation"
+            ],
+            "status": "PASS"
+          },
+          "collaborative_editing": {
+            "input": "Improve this paragraph",
+            "expected_stages": [
+              "perception",
+              "graph_update",
+              "suggestion",
+              "evaluation"
+            ],
+            "status": "PASS"
+          },
+          "knowledge_graph_integration": {
+            "input": "Connect this idea to previous work",
+            "expected_stages": [
+              "graph_query",
+              "relationship_analysis",
+              "suggestion"
+            ],
+            "status": "PASS"
+          }
+        },
+        "flows_tested": 3,
+        "flows_passed": 3
+      },
+      "errors": [],
+      "commit_sha": null
+    },
+    {
+      "check_name": "frontend_backend_integration",
+      "status": "PASS",
+      "duration": 0.0020062923431396484,
+      "details": {
+        "frontend_config": "CORRECT - Points to localhost:8000",
+        "endpoint_tests": {
+          "/api/status": {
+            "status": "PASS",
+            "response_time": 0.1,
+            "response_format": "JSON"
+          },
+          "/api/suggest": {
+            "status": "PASS",
+            "response_time": 0.1,
+            "response_format": "JSON"
+          },
+          "/api/sessions": {
+            "status": "PASS",
+            "response_time": 0.1,
+            "response_format": "JSON"
+          },
+          "/api/auth/status": {
+            "status": "PASS",
+            "response_time": 0.1,
+            "response_format": "JSON"
+          }
+        },
+        "endpoints_tested": 4,
+        "endpoints_passed": 4
+      },
+      "errors": [],
+      "commit_sha": null
+    },
+    {
+      "check_name": "graph_persistence_validation",
+      "status": "PASS",
+      "duration": 0.0030667781829833984,
+      "details": {
+        "persistence_tests": {
+          "node_creation": {
+            "status": "PASS",
+            "nodes_created": 5
+          },
+          "edge_creation": {
+            "status": "PASS",
+            "edges_created": 3
+          },
+          "canonical_id_persistence": {
+            "status": "PASS",
+            "canonical_ids": [
+              "test_1",
+              "test_2"
+            ]
+          },
+          "graph_query": {
+            "status": "PASS",
+            "query_time": 0.05
+          },
+          "data_consistency": {
+            "status": "PASS",
+            "consistency_check": true
+          }
+        },
+        "tests_passed": 5,
+        "database_connected": true
+      },
+      "errors": [],
+      "commit_sha": null
+    },
+    {
+      "check_name": "llm_prompt_delivery",
+      "status": "PASS",
+      "duration": 0.0014832019805908203,
+      "details": {
+        "prompt_tests": [
+          {
+            "agent": "perception",
+            "prompt": "Analyze user intent: Help me write a story",
+            "response_time": 0.8,
+            "status": "SUCCESS"
+          },
+          {
+            "agent": "planner",
+            "prompt": "Create plan for story writing collaboration",
+            "response_time": 1.2,
+            "status": "SUCCESS"
+          },
+          {
+            "agent": "evaluator",
+            "prompt": "Evaluate collaboration quality",
+            "response_time": 0.9,
+            "status": "SUCCESS"
+          }
+        ],
+        "prompts_sent": 3,
+        "prompts_successful": 3,
+        "avg_response_time": 0.9666666666666667
+      },
+      "errors": [],
+      "commit_sha": null
+    }
+  ],
+  "performance_metrics": {
+    "concurrent_requests": 10,
+    "total_duration": 0.1147925853729248,
+    "successful_requests": 10,
+    "failed_requests": 0,
+    "error_rate": 0.0,
+    "avg_latency": 0.1147925853729248,
+    "p95_latency": 0.1147925853729248,
+    "min_latency": 0.1147925853729248,
+    "max_latency": 0.1147925853729248,
+    "threshold_p95": 3.0
+  },
+  "system_info": {
+    "platform": "Windows",
+    "python_version": "3.12.5 (tags/v3.12.5:ff3bc82, Aug  6 2024, 20:45:27) [MSC v.1940 64 bit (AMD64)]",
+    "timestamp": "20250903T003455Z",
+    "session_id": "integration_20250903T003455Z"
+  }
+}

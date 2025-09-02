@@ -1,45 +1,49 @@
 #!/usr/bin/env python3
 """
-Run script for Human-AI Co-Creation Server
-Handles proper Python path setup for module imports
+Production-grade server launcher for Human-AI Co-Creation System
+Handles import paths and environment setup properly
 """
 
 import sys
 import os
 from pathlib import Path
 
-# Add the project root and server directory to Python path
-project_root = Path(__file__).parent
-server_dir = project_root / "server"
-sys.path.insert(0, str(project_root))
+# Add server directory to Python path for proper imports
+server_dir = Path(__file__).parent / "server"
 sys.path.insert(0, str(server_dir))
 
-# Now we can import and run the server
+# Set environment variables for production
+os.environ.setdefault("PYTHONPATH", str(server_dir))
+
 if __name__ == "__main__":
     try:
-        # Change to server directory so relative paths work
+        print("🚀 Starting Human-AI Co-Creation Server...")
+        
+        # Change to server directory for consistent imports
         os.chdir(str(server_dir))
         
-        # Import from the server module
+        # Import and run the server
         from app import app
-        from utils.logging_cfg import get_api_logger
-        
         import uvicorn
-        from server_config import config
         
-        logger = get_api_logger()
+        # Get configuration
+        port = int(os.getenv("BACKEND_PORT", 8000))
+        host = os.getenv("SERVER_HOST", "0.0.0.0")
+        debug = os.getenv("DEBUG", "false").lower() == "true"
         
-        logger.info("🚀 Starting Human-AI Co-Creation Server...")
-        logger.info(f"📊 Health Check: http://localhost:{config.port}/health")
-        logger.info(f"🔍 API Docs: http://localhost:{config.port}/docs")
-        logger.info(f"🌐 Frontend URL: {config.frontend_url}")
+        print(f"📡 Server starting on http://{host}:{port}")
+        print(f"🔧 Debug mode: {debug}")
+        print(f"📊 Health Check: http://localhost:{port}/api/status")
+        print(f"🔍 API Docs: http://localhost:{port}/docs")
         
+        # Start the server with reload disabled for production stability
         uvicorn.run(
-            "app:app",  # Use import string for reload support
-            host=config.host,
-            port=config.port,
-            reload=config.debug,
-            log_level=config.log_level.lower()
+            app,
+            host=host,
+            port=port,
+            reload=False,  # Disable reload to prevent import issues
+            access_log=True,
+            log_level="info"
         )
         
     except Exception as e:

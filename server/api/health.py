@@ -58,7 +58,10 @@ sys.path.append(str(Path(__file__).parent.parent))
 # Import with proper paths
 from db.arango_client import ArangoClient
 from db.mongo_client import MongoClient
-from server_config import ServerConfig
+try:
+    from server_config import ServerConfig
+except ImportError:
+    from ..server_config import ServerConfig
 
 
 class HealthStatus(BaseModel):

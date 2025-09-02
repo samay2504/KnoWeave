@@ -31,12 +31,17 @@ logger = logging.getLogger(__name__)
 
 class DynamicConfig(BaseSettings):
     """
-    Configuration class with dynamic path resolution and environment variable support
+    Production-grade configuration system for Human-AI Co-Creation Platform
+    
+    Copyright (c) 2025 Samay Mehar. All rights reserved.
+    Patent Pending - Samay Mehar
+    
+    Dynamic path resolution and environment variable support with secure defaults.
     """
     
     # Environment
-    environment: str = Field(default="development", env="ENVIRONMENT")
-    debug: bool = Field(default=True, env="DEBUG")
+    environment: str = Field(default="production", env="ENVIRONMENT")
+    debug: bool = Field(default=False, env="DEBUG")
     
     # Server Configuration
     host: str = Field(default="0.0.0.0", env="HOST")
@@ -52,7 +57,7 @@ class DynamicConfig(BaseSettings):
     arango_url: str = Field(default="http://localhost:8529", env="ARANGO_URL")
     arango_user: str = Field(default="root", env="ARANGO_USER")
     arango_password: str = Field(default="", env="ARANGO_PASSWORD")
-    arango_database: str = Field(default="project-db", env="ARANGO_DATABASE")
+    arango_database: str = Field(default="human_ai_co_create", env="ARANGO_DATABASE")
     
     # Authentication & Security
     jwt_secret: str = Field(default="dev-secret-key", env="JWT_SECRET")
@@ -203,9 +208,21 @@ def load_config(env_file: Optional[Union[str, Path]] = None) -> DynamicConfig:
                 logger.debug(f"Found .env file at: {env_file}")
                 break
     
-    # Load configuration
+    # Explicitly load .env file into environment
     if env_file:
-        os.environ.setdefault("ENV_FILE", str(env_file))
+        try:
+            from dotenv import load_dotenv
+            load_dotenv(env_file)
+            logger.info(f"Loaded configuration from: {env_file}")
+        except ImportError:
+            logger.warning("python-dotenv not available, falling back to manual parsing")
+            # Fallback manual parsing if dotenv not available
+            with open(env_file, 'r') as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith('#') and '=' in line:
+                        key, value = line.split('=', 1)
+                        os.environ.setdefault(key.strip(), value.strip())
     
     return DynamicConfig()
 

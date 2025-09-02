@@ -1,0 +1,284 @@
+{
+  "test_id": "prompt_schema_20250902_231510",
+  "timestamp": "2025-09-02T23:15:10.537727",
+  "validations": {
+    "agent_prompts": {
+      "perception": {
+        "agent_name": "perception",
+        "structure_valid": true,
+        "missing_keys": [],
+        "content_checks": {
+          "required_content": {
+            "expected": [
+              "entity extraction",
+              "relationship identification",
+              "semantic analysis"
+            ],
+            "found": [],
+            "coverage": 0.0
+          },
+          "output_schema": {
+            "schema_defined": true,
+            "has_properties": true,
+            "schema_type": "dict"
+          },
+          "prompt_structure": {
+            "prompt_length": 2382,
+            "has_system_section": true,
+            "has_instructions": true,
+            "mentions_agent": true
+          },
+          "generation_params": {
+            "temperature_valid": true,
+            "max_tokens_valid": true,
+            "temperature": 0.3,
+            "max_tokens": 1500
+          }
+        },
+        "errors": []
+      },
+      "planner": {
+        "agent_name": "planner",
+        "structure_valid": true,
+        "missing_keys": [],
+        "content_checks": {
+          "required_content": {
+            "expected": [
+              "plan generation",
+              "action sequencing",
+              "objective alignment"
+            ],
+            "found": [],
+            "coverage": 0.0
+          },
+          "output_schema": {
+            "schema_defined": true,
+            "has_properties": true,
+            "schema_type": "dict"
+          },
+          "prompt_structure": {
+            "prompt_length": 2516,
+            "has_system_section": true,
+            "has_instructions": true,
+            "mentions_agent": true
+          },
+          "generation_params": {
+            "temperature_valid": true,
+            "max_tokens_valid": true,
+            "temperature": 0.3,
+            "max_tokens": 2000
+          }
+        },
+        "errors": []
+      },
+      "graph_manager": {
+        "agent_name": "graph_manager",
+        "structure_valid": true,
+        "missing_keys": [],
+        "content_checks": {
+          "required_content": {
+            "expected": [
+              "node creation",
+              "edge formation",
+              "graph optimization"
+            ],
+            "found": [],
+            "coverage": 0.0
+          },
+          "output_schema": {
+            "schema_defined": true,
+            "has_properties": true,
+            "schema_type": "dict"
+          },
+          "prompt_structure": {
+            "prompt_length": 1121,
+            "has_system_section": true,
+            "has_instructions": true,
+            "mentions_agent": true
+          },
+          "generation_params": {
+            "temperature_valid": true,
+            "max_tokens_valid": true,
+            "temperature": 0.1,
+            "max_tokens": 1000
+          }
+        },
+        "errors": []
+      },
+      "verifier": {
+        "agent_name": "verifier",
+        "structure_valid": true,
+        "missing_keys": [],
+        "content_checks": {
+          "required_content": {
+            "expected": [
+              "consistency check",
+              "validation rules",
+              "quality assessment"
+            ],
+            "found": [],
+            "coverage": 0.0
+          },
+          "output_schema": {
+            "schema_defined": true,
+            "has_properties": true,
+            "schema_type": "dict"
+          },
+          "prompt_structure": {
+            "prompt_length": 1456,
+            "has_system_section": true,
+            "has_instructions": true,
+            "mentions_agent": true
+          },
+          "generation_params": {
+            "temperature_valid": true,
+            "max_tokens_valid": true,
+            "temperature": 0.1,
+            "max_tokens": 1500
+          }
+        },
+        "errors": []
+      },
+      "evaluator": {
+        "agent_name": "evaluator",
+        "structure_valid": true,
+        "missing_keys": [],
+        "content_checks": {
+          "required_content": {
+            "expected": [
+              "ranking criteria",
+              "scoring mechanism",
+              "comparative analysis"
+            ],
+            "found": [],
+            "coverage": 0.0
+          },
+          "output_schema": {
+            "schema_defined": true,
+            "has_properties": true,
+            "schema_type": "dict"
+          },
+          "prompt_structure": {
+            "prompt_length": 1388,
+            "has_system_section": true,
+            "has_instructions": true,
+            "mentions_agent": true
+          },
+          "generation_params": {
+            "temperature_valid": true,
+            "max_tokens_valid": true,
+            "temperature": 0.1,
+            "max_tokens": 1000
+          }
+        },
+        "errors": []
+      },
+      "summary": {
+        "total_agents": 5,
+        "valid_prompts": 5,
+        "success_rate": 1.0
+      }
+    },
+    "topic_coverage": {
+      "renewable_energy": {
+        "topic": "renewable energy",
+        "prompt_generated": true,
+        "topic_mentioned": true,
+        "descriptor_mentioned": false,
+        "relevant_content": true
+      },
+      "healthcare_innovation": {
+        "topic": "healthcare innovation",
+        "prompt_generated": true,
+        "topic_mentioned": true,
+        "descriptor_mentioned": false,
+        "relevant_content": true
+      },
+      "autonomous_vehicles": {
+        "topic": "autonomous vehicles",
+        "prompt_generated": true,
+        "topic_mentioned": true,
+        "descriptor_mentioned": false,
+        "relevant_content": true
+      },
+      "artificial_intelligence": {
+        "topic": "artificial intelligence",
+        "prompt_generated": true,
+        "topic_mentioned": true,
+        "descriptor_mentioned": false,
+        "relevant_content": true
+      },
+      "summary": {
+        "total_topics": 4,
+        "successful_topics": 4,
+        "coverage_rate": 1.0
+      }
+    },
+    "mode_variations": {
+      "focused": {
+        "mode": "focused",
+        "prompt_generated": true,
+        "mode_indicators": [
+          "specific",
+          "targeted",
+          "precise",
+          "narrow"
+        ],
+        "mode_influence_detected": false,
+        "instruction_length": 236
+      },
+      "balanced": {
+        "mode": "balanced",
+        "prompt_generated": true,
+        "mode_indicators": [
+          "balanced",
+          "comprehensive",
+          "moderate",
+          "measured"
+        ],
+        "mode_influence_detected": true,
+        "instruction_length": 236
+      },
+      "exploratory": {
+        "mode": "exploratory",
+        "prompt_generated": true,
+        "mode_indicators": [
+          "explore",
+          "creative",
+          "innovative",
+          "broad"
+        ],
+        "mode_influence_detected": false,
+        "instruction_length": 236
+      },
+      "conservative": {
+        "mode": "conservative",
+        "prompt_generated": true,
+        "mode_indicators": [
+          "conservative",
+          "careful",
+          "safe",
+          "proven"
+        ],
+        "mode_influence_detected": true,
+        "instruction_length": 236
+      },
+      "summary": {
+        "total_modes": 4,
+        "successful_modes": 2,
+        "adaptation_rate": 0.5
+      }
+    },
+    "session_consistency": {
+      "sessions_tested": 3,
+      "structural_consistency": true,
+      "content_similarity": 1.0,
+      "consistency_threshold_met": true
+    }
+  },
+  "overall_status": "SUCCESS",
+  "errors": [],
+  "success_rate": 1.0,
+  "passed_validations": 4,
+  "total_validations": 4
+}

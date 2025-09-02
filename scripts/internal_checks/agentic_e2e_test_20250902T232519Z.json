@@ -1,0 +1,61 @@
+{
+  "test_id": "e2e_test_20250902_232453",
+  "timestamp": "2025-09-02T23:24:53.610786",
+  "scenario": {
+    "topic": "sustainable_urban_planning",
+    "user_input": "How can we design eco-friendly transportation systems for smart cities?",
+    "expected_agents": [
+      "session_manager",
+      "perception",
+      "planner",
+      "graph_manager",
+      "verifier",
+      "evaluator"
+    ],
+    "test_mode": true
+  },
+  "agent_results": {
+    "session_manager": {
+      "status": "SUCCESS",
+      "ptg_available": true,
+      "prompt_generated": true,
+      "has_prompt_content": true,
+      "has_metadata": true
+    },
+    "perception": {
+      "status": "SUCCESS",
+      "result_received": true,
+      "entities_found": 0,
+      "chunks_created": 0
+    },
+    "planner": {
+      "status": "SUCCESS",
+      "result_received": true,
+      "branches_generated": 0,
+      "has_recommendations": false
+    },
+    "graph_manager": {
+      "status": "SUCCESS",
+      "result_received": true,
+      "nodes_processed": 3,
+      "edges_processed": 1
+    },
+    "verifier": {
+      "status": "SUCCESS",
+      "result_received": true,
+      "validation_completed": false,
+      "has_feedback": false
+    },
+    "evaluator": {
+      "status": "SUCCESS",
+      "result_received": true,
+      "ranking_provided": false,
+      "metrics_calculated": 0
+    }
+  },
+  "integration_status": "SUCCESS",
+  "errors": [],
+  "success_rate": 1.0,
+  "passed_tests": 6,
+  "total_tests": 6
+}

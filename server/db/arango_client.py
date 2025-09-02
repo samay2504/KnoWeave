@@ -107,45 +107,136 @@ class ArangoGraphClient:
         self.use_sync = False
 
     async def connect(self) -> bool:
-        """Connect to ArangoDB with fallback handling"""
-        try:
-            if AIOARANGO_AVAILABLE:
-                await self._connect_async()
-            elif ARANGO_AVAILABLE:
-                await self._connect_sync()
-            else:
-                logger.warning("No ArangoDB library available")
-                return False
+        """Connect to ArangoDB with comprehensive error handling and fallback"""
+        max_retries = 3
+        retry_delay = 2
+        
+        for attempt in range(max_retries):
+            try:
+                logger.info(f"Attempting to connect to ArangoDB (attempt {attempt + 1}/{max_retries})")
+                
+                if AIOARANGO_AVAILABLE:
+                    await self._connect_async()
+                elif ARANGO_AVAILABLE:
+                    await self._connect_sync()
+                else:
+                    logger.warning("No ArangoDB library available - system will use MongoDB fallback")
+                    return False
 
-            await self._initialize_collections()
-            self.connected = True
-            logger.info("Connected to ArangoDB successfully")
-            return True
+                await self._initialize_collections()
+                self.connected = True
+                logger.info("✅ Connected to ArangoDB successfully")
+                return True
 
-        except Exception as e:
-            logger.error(f"Failed to connect to ArangoDB: {e}")
-            return False
+            except Exception as e:
+                logger.warning(f"ArangoDB connection attempt {attempt + 1} failed: {e}")
+                
+                if attempt < max_retries - 1:
+                    logger.info(f"Retrying in {retry_delay} seconds...")
+                    await asyncio.sleep(retry_delay)
+                    retry_delay *= 2  # Exponential backoff
+                else:
+                    logger.error("❌ All ArangoDB connection attempts failed - check if ArangoDB is running")
+                    logger.info("💡 Hint: Run 'docker-compose -f docker-compose.databases.yml up -d' to start ArangoDB")
+                    logger.info("🔄 System will continue with MongoDB-only mode")
+                    return False
+
+        return False
 
     async def _connect_async(self) -> None:
-        """Connect using async ArangoDB client"""
+        """Connect using async ArangoDB client with proper database initialization"""
         self.client = ArangoClient(hosts=self.config["url"])
-        self.db = await self.client.db(
-            name=self.config["database"],
-            username=self.config["user"],
-            password=self.config["password"],
-        )
-        self.use_sync = False
-
-    async def _connect_sync(self) -> None:
-        """Connect using sync ArangoDB client in thread"""
-
-        def _sync_connect():
-            client = SyncArangoClient(hosts=self.config["url"])
-            return client.db(
-                name=self.config["database"],
+        database_name = self.config["database"]
+        
+        # First try to connect directly to the target database
+        try:
+            self.db = await self.client.db(
+                name=database_name,
                 username=self.config["user"],
                 password=self.config["password"],
             )
+            # Test the connection
+            await self.db.collections()
+            logger.info(f"✅ Connected to existing database: {database_name}")
+            self.use_sync = False
+            return
+        except Exception as e:
+            logger.info(f"Database {database_name} not accessible, attempting to create: {e}")
+        
+        # If direct connection failed, try to connect to _system and create database
+        try:
+            sys_db = await self.client.db(
+                name="_system",
+                username=self.config["user"],
+                password=self.config["password"],
+            )
+            
+            # Check if our database exists, create if not
+            databases = await sys_db.databases()
+            if database_name not in databases:
+                logger.info(f"Creating database: {database_name}")
+                await sys_db.create_database(database_name)
+                logger.info(f"✅ Database {database_name} created successfully")
+            else:
+                logger.info(f"Database {database_name} already exists")
+                
+            # Now connect to our target database
+            self.db = await self.client.db(
+                name=database_name,
+                username=self.config["user"],
+                password=self.config["password"],
+            )
+            self.use_sync = False
+        except Exception as e:
+            logger.warning(f"Could not create database {database_name}: {e}")
+            raise e
+
+    async def _connect_sync(self) -> None:
+        """Connect using sync ArangoDB client with proper database initialization"""
+
+        def _sync_connect():
+            client = SyncArangoClient(hosts=self.config["url"])
+            database_name = self.config["database"]
+            
+            # First try to connect directly to the target database
+            try:
+                target_db = client.db(
+                    name=database_name,
+                    username=self.config["user"],
+                    password=self.config["password"],
+                )
+                # Test the connection
+                target_db.collections()
+                logger.info(f"✅ Connected to existing database: {database_name}")
+                return target_db
+            except Exception as e:
+                logger.info(f"Database {database_name} not accessible, attempting to create: {e}")
+            
+            # If direct connection failed, try to connect to _system and create database
+            try:
+                sys_db = client.db(
+                    name="_system",
+                    username=self.config["user"],
+                    password=self.config["password"],
+                )
+                
+                # Check if our database exists, create if not
+                if not sys_db.has_database(database_name):
+                    logger.info(f"Creating database: {database_name}")
+                    sys_db.create_database(database_name)
+                    logger.info(f"✅ Database {database_name} created successfully")
+                else:
+                    logger.info(f"Database {database_name} already exists")
+                    
+                # Now connect to our target database
+                return client.db(
+                    name=database_name,
+                    username=self.config["user"],
+                    password=self.config["password"],
+                )
+            except Exception as e:
+                logger.warning(f"Could not create database {database_name}: {e}")
+                raise e
 
         loop = asyncio.get_event_loop()
         self.db = await loop.run_in_executor(None, _sync_connect)

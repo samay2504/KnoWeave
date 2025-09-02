@@ -1,0 +1,68 @@
+{
+  "timestamp": "20250903T003142Z",
+  "metrics": {
+    "concurrent_requests": 10,
+    "total_duration": 0.13985180854797363,
+    "successful_requests": 10,
+    "failed_requests": 0,
+    "error_rate": 0.0,
+    "avg_latency": 0.13866686820983887,
+    "p95_latency": 0.13866686820983887,
+    "min_latency": 0.13866686820983887,
+    "max_latency": 0.13866686820983887,
+    "threshold_p95": 3.0
+  },
+  "raw_results": [
+    {
+      "success": true,
+      "duration": 0.13866686820983887,
+      "response": "Mock suggestion generated"
+    },
+    {
+      "success": true,
+      "duration": 0.13866686820983887,
+      "response": "Mock suggestion generated"
+    },
+    {
+      "success": true,
+      "duration": 0.13866686820983887,
+      "response": "Mock suggestion generated"
+    },
+    {
+      "success": true,
+      "duration": 0.13866686820983887,
+      "response": "Mock suggestion generated"
+    },
+    {
+      "success": true,
+      "duration": 0.13866686820983887,
+      "response": "Mock suggestion generated"
+    },
+    {
+      "success": true,
+      "duration": 0.13866686820983887,
+      "response": "Mock suggestion generated"
+    },
+    {
+      "success": true,
+      "duration": 0.13866686820983887,
+      "response": "Mock suggestion generated"
+    },
+    {
+      "success": true,
+      "duration": 0.13866686820983887,
+      "response": "Mock suggestion generated"
+    },
+    {
+      "success": true,
+      "duration": 0.13866686820983887,
+      "response": "Mock suggestion generated"
+    },
+    {
+      "success": true,
+      "duration": 0.13866686820983887,
+      "response": "Mock suggestion generated"
+    }
+  ],
+  "performance_issues": []
+}

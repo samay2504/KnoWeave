@@ -1,0 +1,22 @@
+{
+  "test_id": "e2e_test_20250902_181950",
+  "timestamp": "2025-09-02T18:19:50.573887",
+  "scenario": {
+    "topic": "sustainable_urban_planning",
+    "user_input": "How can we design eco-friendly transportation systems for smart cities?",
+    "expected_agents": [
+      "session_manager",
+      "perception",
+      "planner",
+      "graph_manager",
+      "verifier",
+      "evaluator"
+    ],
+    "test_mode": true
+  },
+  "agent_results": {},
+  "integration_status": "SETUP_FAILED",
+  "errors": [
+    "Setup error: cannot import name 'DependencyContainer' from 'dependencies' (D:\\Projects2.0\\BTP_HumanAICoCreation\\human-ai-co-create\\server\\dependencies.py)"
+  ]
+}

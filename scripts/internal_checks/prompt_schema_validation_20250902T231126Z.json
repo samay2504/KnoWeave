@@ -1,0 +1,9 @@
+{
+  "test_id": "prompt_schema_20250902_231101",
+  "timestamp": "2025-09-02T23:11:01.073832",
+  "validations": {},
+  "overall_status": "SETUP_FAILED",
+  "errors": [
+    "Setup error: 'ProductionDependencyContainer' object has no attribute 'get_ptg'"
+  ]
+}

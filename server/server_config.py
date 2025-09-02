@@ -28,6 +28,12 @@ from typing import Dict, Any, Optional, List
 from pydantic_settings import BaseSettings
 from pydantic import Field, field_validator, ConfigDict
 
+# Import global constants
+try:
+    from .constants import Ports, URLs, OAuth, Database, App
+except ImportError:
+    from constants import Ports, URLs, OAuth, Database, App
+
 # Load environment variables from env file
 try:
     from dotenv import load_dotenv
@@ -56,26 +62,34 @@ class ServerConfig(BaseSettings):
 
     model_config = ConfigDict(env_file=".env", env_file_encoding="utf-8")
 
-    # Server settings
-    host: str = Field(default="0.0.0.0", alias="HOST")
-    port: int = Field(default=8000, alias="PORT")
+    # Environment settings
+    environment: str = Field(default="development", alias="ENVIRONMENT")
+
+    # Server settings - using global constants
+    host: str = Field(default=Ports.BACKEND_HOST, alias="HOST")
+    port: int = Field(default=Ports.BACKEND_PORT, alias="PORT")
+    backend_port: int = Field(default=Ports.BACKEND_PORT, alias="BACKEND_PORT")
+    frontend_port: int = Field(default=Ports.FRONTEND_PORT, alias="FRONTEND_PORT")
     debug: bool = Field(default=False, alias="DEBUG")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
 
-    # Database settings
+    # Database settings - using global constants
     database_mode: str = Field(default="mongodb", alias="DATABASE_MODE")  # mongodb, arangodb, or both
     mongo_uri: str = Field(
-        default="mongodb://localhost:27017/human_ai_co_create", alias="MONGO_URI"
+        default=URLs.mongodb_url(), alias="MONGO_URI"
     )
-    arango_url: str = Field(default="http://localhost:8529", alias="ARANGO_URL")
-    arango_user: str = Field(default="root", alias="ARANGO_USER")
+    arango_url: str = Field(default=URLs.arangodb_url(), alias="ARANGO_URL")
+    arango_user: str = Field(default=Database.ARANGO_USERNAME, alias="ARANGO_USER")
     arango_password: str = Field(default="password", alias="ARANGO_PASSWORD")
-    arango_database: str = Field(default="human_ai_co_create", alias="ARANGO_DATABASE")
-    redis_url: str = Field(default="redis://localhost:6379", alias="REDIS_URL")
+    arango_database: str = Field(default=Database.ARANGO_DATABASE, alias="ARANGO_DATABASE")
+    redis_url: str = Field(default=URLs.redis_url(), alias="REDIS_URL")
 
     # Google OAuth Configuration
     google_oauth_json_path: Optional[str] = Field(
         default=None, alias="GOOGLE_OAUTH_JSON_PATH"
+    )
+    google_oauth_json_file: Optional[str] = Field(
+        default=None, alias="GOOGLE_OAUTH_JSON_FILE"
     )
     google_oauth_json: Optional[str] = Field(default=None, alias="GOOGLE_OAUTH_JSON")
     google_oauth_client_id: Optional[str] = Field(
@@ -92,8 +106,8 @@ class ServerConfig(BaseSettings):
     cookie_secure: bool = Field(default=True, alias="COOKIE_SECURE")
     cookie_samesite: str = Field(default="Lax", alias="COOKIE_SAMESITE")
 
-    # Frontend Configuration
-    frontend_url: str = Field(default="http://localhost:3000", alias="FRONTEND_URL")
+    # Frontend Configuration - using global constants
+    frontend_url: str = Field(default=URLs.frontend_url(), alias="FRONTEND_URL")
 
     # LLM Provider settings
     llm_provider_preference: List[str] = Field(
@@ -122,9 +136,11 @@ class ServerConfig(BaseSettings):
         Get Google OAuth configuration from JSON file or environment variable
         Returns the OAuth configuration dict or raises an error if not found
         """
-        # Try to load from JSON file first
-        if self.google_oauth_json_path:
-            json_path = Path(self.google_oauth_json_path)
+        # Try to load from JSON file first (GOOGLE_OAUTH_JSON_PATH)
+        json_path_to_check = self.google_oauth_json_path or self.google_oauth_json_file
+        
+        if json_path_to_check:
+            json_path = Path(json_path_to_check)
             if not json_path.is_absolute():
                 # Get the directory where this config file is located (server directory)
                 server_dir = Path(__file__).parent
@@ -168,15 +184,15 @@ class ServerConfig(BaseSettings):
             return {
                 "client_id": self.google_oauth_client_id,
                 "client_secret": self.google_oauth_client_secret,
-                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                "token_uri": "https://oauth2.googleapis.com/token",
-                "redirect_uris": ["http://localhost:3000/auth/callback"],
+                "auth_uri": OAuth.AUTH_URI,
+                "token_uri": OAuth.TOKEN_URI,
+                "redirect_uris": OAuth.REDIRECT_URIS,
             }
 
         # No OAuth configuration found
         error_msg = (
             "Google OAuth configuration not found. Please set one of:\n"
-            "1. GOOGLE_OAUTH_JSON_PATH pointing to a valid JSON file\n"
+            "1. GOOGLE_OAUTH_JSON_PATH or GOOGLE_OAUTH_JSON_FILE pointing to a valid JSON file\n"
             "2. GOOGLE_OAUTH_JSON as a JSON string\n"
             "3. GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET\n"
             "See .env.example for configuration details."
@@ -193,8 +209,9 @@ class ServerConfig(BaseSettings):
                 f.write(f"Error: {error_msg}\n")
                 f.write(f"Expected paths checked:\n")
                 f.write(f"- GOOGLE_OAUTH_JSON_PATH: {self.google_oauth_json_path}\n")
+                f.write(f"- GOOGLE_OAUTH_JSON_FILE: {self.google_oauth_json_file}\n")
                 f.write(
-                    f"- File exists: {Path(self.google_oauth_json_path).exists() if self.google_oauth_json_path else 'N/A'}\n"
+                    f"- File exists: {Path(json_path_to_check).exists() if json_path_to_check else 'N/A'}\n"
                 )
                 f.write(f"\n")
         except Exception:

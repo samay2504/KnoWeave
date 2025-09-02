@@ -5,15 +5,101 @@ import AuthGoogle from './components/AuthGoogle';
 import Callback from './components/Callback';
 import GraphView from './components/GraphView';
 import HealthCheck from './components/HealthCheck';
+import ModeSelector from './components/ModeSelector';
+import { useAIMode, useSession } from './hooks/useAIMode';
+import { AI_MODES, DEFAULT_MODE, API_CONFIG } from './config/constants';
 import './index.css';
 
-const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
+const API_BASE_URL = API_CONFIG.BASE_URL;
 
-// Dashboard component with futuristic design
+// Dashboard component with mode selection integration
 const Dashboard = ({ user }) => {
   const [currentSessionId, setCurrentSessionId] = useState(null);
   const [storyContent, setStoryContent] = useState('');
   const [isEditing, setIsEditing] = useState(false);
+  const [userPrompt, setUserPrompt] = useState('');
+  const [generatedPrompt, setGeneratedPrompt] = useState('');
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [agentType, setAgentType] = useState('general');
+
+  // Use custom hooks for AI mode and session management
+  const {
+    currentMode,
+    updateMode,
+    generatePrompt,
+    isLoading: modeLoading,
+    error: modeError,
+    clearError
+  } = useAIMode(DEFAULT_MODE);
+
+  const {
+    sessionId,
+    isSessionActive,
+    createSession,
+    endSession
+  } = useSession();
+
+  // Initialize session on mount
+  useEffect(() => {
+    const initSession = async () => {
+      try {
+        await createSession({
+          timestamp: new Date().toISOString(),
+          initial_mode: DEFAULT_MODE,
+          user: user
+        });
+        setCurrentSessionId(sessionId);
+      } catch (err) {
+        console.error('Failed to create session:', err);
+      }
+    };
+
+    if (!isSessionActive && user) {
+      initSession();
+    }
+  }, [isSessionActive, user, createSession, sessionId]);
+
+  /**
+   * Handle mode change from selector
+   */
+  const handleModeChange = async (newMode, modeConfig) => {
+    try {
+      await updateMode(newMode, modeConfig);
+      console.log(`Mode changed to: ${newMode}`);
+    } catch (err) {
+      console.error('Failed to update mode:', err);
+    }
+  };
+
+  /**
+   * Generate canonical prompt using PTG system
+   */
+  const handleGeneratePrompt = async () => {
+    if (!userPrompt.trim()) return;
+
+    setIsGenerating(true);
+    clearError();
+
+    try {
+      const result = await generatePrompt(userPrompt, agentType);
+      setGeneratedPrompt(result.canonical_prompt);
+    } catch (err) {
+      console.error('Failed to generate prompt:', err);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  /**
+   * Apply generated prompt to story
+   */
+  const handleApplyPrompt = () => {
+    if (generatedPrompt) {
+      setStoryContent(prev => prev + '\n\n' + generatedPrompt);
+      setUserPrompt('');
+      setGeneratedPrompt('');
+    }
+  };
 
   return (
     <div className="min-h-screen bg-cyber-black cyber-grid">
@@ -70,40 +156,120 @@ const Dashboard = ({ user }) => {
               </div>
             </div>
             
-            {/* AI Suggestions Panel */}
+            {/* Mode Selection and PTG Panel */}
             <div className="glass-strong rounded-2xl p-6 shadow-cyber">
               <h3 className="text-lg font-semibold cyber-heading mb-6 flex items-center">
                 <svg className="w-6 h-6 mr-3 animate-pulse" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
                 </svg>
-                AI Creative Suggestions
+                AI Mode & Prompt Generation
               </h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {[1, 2, 3].map((i) => (
-                  <div key={i} className="glass rounded-xl p-4 border-cyber hover:neon-glow-strong transition-all duration-300 group">
-                    <div className="flex items-center justify-between mb-3">
-                      <span className="text-sm font-medium cyber-subheading">Option {i}</span>
-                      <span className="text-xs px-2 py-1 bg-neon-orange-500/20 text-neon-orange-300 rounded-full">
-                        95% coherence
-                      </span>
-                    </div>
-                    <p className="text-white text-sm mb-4 leading-relaxed">
-                      Sample continuation text that shows how the story might continue with enhanced narrative flow...
-                    </p>
-                    <div className="flex space-x-2">
-                      <button className="cyber-button px-3 py-1 text-xs rounded hover:scale-105 transform transition-all duration-200 bg-green-600/20 hover:bg-green-600/40 border-green-500/30">
-                        Accept
-                      </button>
-                      <button className="cyber-button px-3 py-1 text-xs rounded hover:scale-105 transform transition-all duration-200">
-                        Edit
-                      </button>
-                      <button className="cyber-button px-3 py-1 text-xs rounded hover:scale-105 transform transition-all duration-200 bg-red-600/20 hover:bg-red-600/40 border-red-500/30">
-                        Reject
-                      </button>
-                    </div>
-                  </div>
-                ))}
+
+              {/* Mode Selector */}
+              <div className="mb-6">
+                <ModeSelector
+                  currentMode={currentMode}
+                  onModeChange={handleModeChange}
+                  disabled={modeLoading}
+                  showDescription={true}
+                  className="cyber-input"
+                />
               </div>
+
+              {/* Agent Type Selection */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium cyber-subheading mb-2">
+                  Agent Type
+                </label>
+                <select
+                  value={agentType}
+                  onChange={(e) => setAgentType(e.target.value)}
+                  className="w-full cyber-input px-3 py-2 rounded-lg"
+                >
+                  <option value="general">General</option>
+                  <option value="creative">Creative</option>
+                  <option value="analytical">Analytical</option>
+                  <option value="technical">Technical</option>
+                  <option value="research">Research</option>
+                  <option value="writing">Writing</option>
+                </select>
+              </div>
+
+              {/* Prompt Input */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium cyber-subheading mb-2">
+                  Your Prompt
+                </label>
+                <textarea
+                  value={userPrompt}
+                  onChange={(e) => setUserPrompt(e.target.value)}
+                  placeholder="Enter your prompt for AI enhancement..."
+                  className="w-full h-24 cyber-input px-3 py-2 rounded-lg resize-none"
+                />
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex space-x-2 mb-4">
+                <button
+                  onClick={handleGeneratePrompt}
+                  disabled={!userPrompt.trim() || isGenerating || modeLoading}
+                  className="cyber-button px-4 py-2 rounded-lg font-medium flex-1 disabled:opacity-50"
+                >
+                  {isGenerating ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white inline mr-2"></div>
+                      Generating...
+                    </>
+                  ) : (
+                    'Generate'
+                  )}
+                </button>
+                
+                {generatedPrompt && (
+                  <button
+                    onClick={handleApplyPrompt}
+                    className="cyber-button px-4 py-2 rounded-lg font-medium bg-green-600/20 hover:bg-green-600/40 border-green-500/30"
+                  >
+                    Apply to Story
+                  </button>
+                )}
+              </div>
+
+              {/* Generated Prompt Display */}
+              {generatedPrompt && (
+                <div className="glass rounded-xl p-4 border-cyber">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium cyber-subheading">Generated Prompt</span>
+                    <span className="text-xs px-2 py-1 bg-neon-orange-500/20 text-neon-orange-300 rounded-full">
+                      Mode: {currentMode}
+                    </span>
+                  </div>
+                  <div className="bg-gray-900/50 rounded-lg p-3 mb-3">
+                    <pre className="whitespace-pre-wrap text-sm text-white font-mono">
+                      {generatedPrompt}
+                    </pre>
+                  </div>
+                  <button
+                    onClick={() => navigator.clipboard.writeText(generatedPrompt)}
+                    className="cyber-button px-3 py-1 text-xs rounded"
+                  >
+                    Copy
+                  </button>
+                </div>
+              )}
+
+              {/* Error Display */}
+              {modeError && (
+                <div className="mt-4 p-3 bg-red-900/50 border border-red-500/30 rounded-lg">
+                  <p className="text-sm text-red-300">{modeError}</p>
+                  <button
+                    onClick={clearError}
+                    className="mt-2 text-xs text-red-400 hover:text-red-200"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              )}
             </div>
           </div>
           

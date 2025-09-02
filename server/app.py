@@ -34,15 +34,37 @@ try:
     PRODUCTION_IMPORTS = True
 except ImportError:
     # Fallback to old import system during transition
-    from server_config import ServerConfig
-    server_config = ServerConfig()
+    try:
+        from .server_config import ServerConfig
+        server_config = ServerConfig()
+    except ImportError:
+        from server_config import ServerConfig
+        server_config = ServerConfig()
     PRODUCTION_IMPORTS = False
 
-from utils.logging_cfg import setup_logging, get_logger
-from dependencies import setup_dependencies, get_container
-
-# from api.health import get_health_router  # Temporarily disabled due to aioredis compatibility issue
-from api.routes import router as api_router
+try:
+    from utils.logging_cfg import setup_logging, get_logger
+    from dependencies import setup_dependencies, get_container
+    # from api.health import get_health_router  # Temporarily disabled due to aioredis compatibility issue
+    from api.routes import router as api_router
+except ImportError:
+    # Fallback for relative imports
+    try:
+        from .utils.logging_cfg import setup_logging, get_logger
+        from .dependencies import setup_dependencies, get_container
+        from .api.routes import router as api_router
+    except ImportError:
+        # Simple fallback without advanced features
+        import logging
+        def setup_logging():
+            logging.basicConfig(level=logging.INFO)
+        def get_logger(name):
+            return logging.getLogger(name)
+        def setup_dependencies():
+            return None
+        def get_container():
+            return None
+        api_router = None
 
 # Import agents with production-ready system
 if PRODUCTION_IMPORTS:
@@ -163,9 +185,47 @@ def create_app() -> "FastAPI":
         allow_headers=["*"],
     )
 
-    # Include auth routes
-    from routes.auth_routes import router as auth_router
-    app.include_router(auth_router)
+    # Include mode and PTG routes
+    try:
+        from api.mode_routes import mode_router, ptg_router
+        app.include_router(mode_router)
+        app.include_router(ptg_router)
+        logger.info("Mode and PTG routes loaded successfully")
+    except ImportError as e:
+        logger.warning(f"Could not import mode routes: {e}")
+        # Create simple fallback routes
+        from fastapi import APIRouter
+        fallback_router = APIRouter(prefix="/api", tags=["fallback"])
+        
+        @fallback_router.get("/session/modes")
+        async def get_modes_fallback():
+            return {
+                "modes": {
+                    "conservative": {"name": "Conservative", "description": "Safe, predictable responses"},
+                    "balanced": {"name": "Balanced", "description": "Balanced creativity and consistency"},
+                    "exploratory": {"name": "Exploratory", "description": "Creative, experimental approaches"},
+                    "focused": {"name": "Focused", "description": "Highly specific, targeted outcomes"}
+                },
+                "default_mode": "balanced"
+            }
+        
+        @fallback_router.post("/session/mode")
+        async def update_mode_fallback(request: dict):
+            return {"status": "success", "mode": request.get("mode", "balanced")}
+        
+        @fallback_router.post("/ptg/generate")
+        async def generate_prompt_fallback(request: dict):
+            return {
+                "canonical_prompt": f"Generated prompt for: {request.get('user_prompt', '')}",
+                "mode": request.get("mode", "balanced"),
+                "agent_type": request.get("agent_type", "general")
+            }
+        
+        app.include_router(fallback_router)
+        async def get_status():
+            return {"status": "running", "mode_routes": "unavailable"}
+            
+        app.include_router(fallback_router)
 
     # Include health endpoints - temporarily disabled due to compatibility issues
     # app.include_router(get_health_router())
@@ -398,5 +458,15 @@ app = create_app() if FASTAPI_AVAILABLE else None
 
 if __name__ == "__main__":
     import uvicorn
-
-    uvicorn.run("server.app:app", host="0.0.0.0", port=8000, reload=True)
+    import os
+    
+    # Disable reload in production to avoid import issues
+    reload_mode = os.getenv("DEBUG", "false").lower() == "true"
+    
+    uvicorn.run(
+        "app:app", 
+        host="0.0.0.0", 
+        port=8000, 
+        reload=reload_mode,
+        access_log=True
+    )

@@ -1,6 +1,10 @@
 """
-Production-ready dependency injection system
-Handles dynamic imports, type annotations, and runtime configuration
+Human-AI Co-Creation Platform - Dependency Container System
+Copyright (c) 2025 Samay Mehar. All rights reserved.
+Patent Pending - Samay Mehar
+
+Production-grade dependency injection system with dual database support.
+Features automatic fallback mechanisms and secure configuration management.
 """
 
 import asyncio
@@ -10,8 +14,8 @@ from contextlib import asynccontextmanager
 
 # Import the new core system
 try:
-    from core.imports import import_manager
-    from core.config import config as global_config
+    from server.core.imports import import_manager
+    from server.core.config import config as global_config
     CORE_SYSTEM_AVAILABLE = True
 except ImportError:
     # Fallback for transition period
@@ -55,7 +59,7 @@ class ProductionDependencyContainer:
                     'arango_url': 'http://localhost:8529',
                     'arango_user': 'root',
                     'arango_password': '',
-                    'arango_database': 'project-db'
+                    'arango_database': 'human_ai_co_create'
                 })()
     
     def _load_mongo_components(self) -> Dict[str, Any]:
@@ -152,12 +156,20 @@ class ProductionDependencyContainer:
                     'url': getattr(self.config, 'arango_url', 'http://localhost:8529'),
                     'user': getattr(self.config, 'arango_user', 'root'),
                     'password': getattr(self.config, 'arango_password', ''),
-                    'database': getattr(self.config, 'arango_database', 'project-db')
+                    'database': getattr(self.config, 'arango_database', 'human_ai_co_create')
                 }
+                
+                logger.info("🔗 Attempting to initialize ArangoDB client...")
                 self._arango_client = await create_arango_client(arango_config)
-                logger.info("ArangoDB client initialized successfully")
+                
+                if self._arango_client and hasattr(self._arango_client, 'connected') and self._arango_client.connected:
+                    logger.info("✅ ArangoDB client initialized successfully")
+                else:
+                    logger.warning("⚠️ ArangoDB client created but not connected - continuing with MongoDB fallback")
+                    
         except Exception as e:
-            logger.warning(f"ArangoDB client could not be initialized: {e}")
+            logger.warning(f"❌ ArangoDB client could not be initialized: {e}")
+            logger.info("🔄 System will continue with MongoDB-only mode")
     
     async def cleanup(self):
         """Cleanup all dependencies"""

@@ -1,0 +1,48 @@
+{
+  "test_id": "e2e_test_20250902_182200",
+  "timestamp": "2025-09-02T18:22:00.486891",
+  "scenario": {
+    "topic": "sustainable_urban_planning",
+    "user_input": "How can we design eco-friendly transportation systems for smart cities?",
+    "expected_agents": [
+      "session_manager",
+      "perception",
+      "planner",
+      "graph_manager",
+      "verifier",
+      "evaluator"
+    ],
+    "test_mode": true
+  },
+  "agent_results": {
+    "session_manager": {
+      "status": "FAILED",
+      "error": "'SessionManager' object has no attribute 'generate_canonical_prompt'"
+    },
+    "perception": {
+      "status": "FAILED",
+      "error": "'PerceptionAgent' object has no attribute 'process_input'"
+    },
+    "planner": {
+      "status": "FAILED",
+      "error": "'PlannerGeneratorAgent' object has no attribute 'generate_plan'"
+    },
+    "graph_manager": {
+      "status": "FAILED",
+      "error": "'GraphManagerAgent' object has no attribute 'process_knowledge_update'"
+    },
+    "verifier": {
+      "status": "FAILED",
+      "error": "'VerifierAgent' object has no attribute 'verify_output'"
+    },
+    "evaluator": {
+      "status": "FAILED",
+      "error": "'EvaluatorAgent' object has no attribute 'evaluate_session'"
+    }
+  },
+  "integration_status": "PARTIAL_FAILURE",
+  "errors": [],
+  "success_rate": 0.0,
+  "passed_tests": 0,
+  "total_tests": 6
+}

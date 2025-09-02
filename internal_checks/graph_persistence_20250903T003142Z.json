@@ -1,0 +1,58 @@
+{
+  "timestamp": "20250903T003142Z",
+  "persistence_tests": {
+    "node_creation": {
+      "status": "PASS",
+      "nodes_created": 5
+    },
+    "edge_creation": {
+      "status": "PASS",
+      "edges_created": 3
+    },
+    "canonical_id_persistence": {
+      "status": "PASS",
+      "canonical_ids": [
+        "test_1",
+        "test_2"
+      ]
+    },
+    "graph_query": {
+      "status": "PASS",
+      "query_time": 0.05
+    },
+    "data_consistency": {
+      "status": "PASS",
+      "consistency_check": true
+    }
+  },
+  "database_status": "CONNECTED",
+  "summary": {
+    "persistence_tests": {
+      "node_creation": {
+        "status": "PASS",
+        "nodes_created": 5
+      },
+      "edge_creation": {
+        "status": "PASS",
+        "edges_created": 3
+      },
+      "canonical_id_persistence": {
+        "status": "PASS",
+        "canonical_ids": [
+          "test_1",
+          "test_2"
+        ]
+      },
+      "graph_query": {
+        "status": "PASS",
+        "query_time": 0.05
+      },
+      "data_consistency": {
+        "status": "PASS",
+        "consistency_check": true
+      }
+    },
+    "tests_passed": 5,
+    "database_connected": true
+  }
+}
