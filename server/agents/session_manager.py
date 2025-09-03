@@ -187,7 +187,7 @@ class PromptTemplateGenerator:
             "few_shot_examples": self._select_canonical_examples(
                 topic, mode, agent_name
             ),
-            "output_schema": self._get_canonical_schema(agent_name),
+            "output_schema": self._get_canonical_schema(agent_name, topic),
             "max_tokens": self._get_max_tokens(agent_name),
             "temperature": self._get_canonical_temperature(agent_name, mode),
             "stop_sequences": ["\n\n"],
@@ -283,8 +283,45 @@ class PromptTemplateGenerator:
         
         return base_instruction + mode_suffix
 
-    def _get_canonical_schema(self, agent_name: str) -> Dict[str, Any]:
-        """Get canonical output schemas matching the prompt specification exactly"""
+    def _get_canonical_schema(self, agent_name: str, topic: str = None) -> Dict[str, Any]:
+        """Get canonical output schemas with domain-specific support matching the prompt specification exactly"""
+        
+        # First check if we have domain-specific schemas
+        domain_schemas = self.examples_cache.get("domain_schemas", {})
+        if topic and domain_schemas:
+            topic_family = self._infer_topic_family_from_schemas(topic, domain_schemas)
+            domain_schema = domain_schemas.get(topic_family, {}).get("output_schema")
+            
+            # If we have a domain-specific schema for planner, use it
+            if agent_name == "planner" and domain_schema:
+                return {
+                    "type": "object",
+                    "properties": {
+                        "session_id": {"type": "string"},
+                        "branches": {
+                            "type": "array",
+                            "items": {
+                                "type": "object", 
+                                "properties": {
+                                    "branch_id": {"type": "string"},
+                                    "content": domain_schema,  # Domain-specific content schema
+                                    "score_estimate": {"type": "number", "minimum": 0, "maximum": 1},
+                                    "meta": {
+                                        "type": "object",
+                                        "properties": {
+                                            "domain": {"type": "string"},
+                                            "topic_family": {"type": "string"}
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        "call_metadata": {"type": "object"}
+                    },
+                    "required": ["session_id", "branches", "call_metadata"]
+                }
+        
+        # Fall back to canonical base schemas
         canonical_schemas = {
             "session_manager": {
                 "type": "object",
@@ -472,25 +509,40 @@ class PromptTemplateGenerator:
         return canonical_schemas.get(agent_name, {"type": "object"})
 
     def _get_canonical_temperature(self, agent_name: str, mode: str) -> float:
-        """Get canonical temperature settings for deterministic sampling of critical tasks"""
-        # Very low temperature for critical verification tasks
-        verification_agents = {"graph_manager", "verifier", "evaluator"}
+        """Get canonical temperature settings with dynamic mode mapping as per blueprint"""
         
-        # Creative agents that benefit from higher temperatures
-        creative_agents = {"perception", "planner"}
-
-        if agent_name in verification_agents:
-            return 0.1  # Deterministic sampling for critical verification tasks
-        elif agent_name in creative_agents and mode == "creative":
-            # In creative mode, planner should have higher temperature than perception
-            if agent_name == "planner":
-                return 0.7  # Higher temperature for creative planning
-            else:  # perception
-                return 0.3  # Moderate creativity for perception
-        elif agent_name in creative_agents:
-            return 0.3  # Balanced temperature for creative agents in balanced mode
-        else:
-            return 0.2  # Low-moderate default for other agents
+        # Blueprint-specified mode mapping to sampling hints
+        mode_temperature_mapping = {
+            "conservative": {"min": 0.0, "max": 0.2, "description": "deterministic, concise"},
+            "balanced": {"min": 0.2, "max": 0.5, "description": "balanced creativity and consistency"},
+            "creative": {"min": 0.6, "max": 1.0, "description": "exploratory, innovative"},
+            # Additional modes for flexibility
+            "exploratory": {"min": 0.6, "max": 0.8, "description": "creative, experimental"},
+            "focused": {"min": 0.1, "max": 0.3, "description": "precise, targeted"}
+        }
+        
+        # Agent-specific temperature adjustments
+        agent_adjustments = {
+            "verifier": -0.1,      # More deterministic for consistency checks
+            "evaluator": -0.1,     # More deterministic for scoring
+            "graph_manager": -0.1, # More deterministic for graph operations
+            "planner": 0.1,        # Slightly more creative for generation
+            "perception": 0.0,     # Neutral adjustment
+            "session_manager": -0.2 # Most deterministic for orchestration
+        }
+        
+        # Get base temperature from mode
+        mode_config = mode_temperature_mapping.get(mode, mode_temperature_mapping["balanced"])
+        base_temp = (mode_config["min"] + mode_config["max"]) / 2
+        
+        # Apply agent-specific adjustment
+        adjustment = agent_adjustments.get(agent_name, 0.0)
+        final_temp = max(0.0, min(1.0, base_temp + adjustment))
+        
+        logger.debug(f"Temperature for {agent_name} in {mode} mode: {final_temp} "
+                    f"(base: {base_temp}, adjustment: {adjustment})")
+        
+        return final_temp
 
     def _get_max_tokens(self, agent_name: str) -> int:
         """Get max tokens per agent type"""
@@ -507,21 +559,104 @@ class PromptTemplateGenerator:
     def _select_canonical_examples(
         self, topic: str, mode: str, agent_name: str
     ) -> List[Dict[str, Any]]:
-        """Select 1-3 few-shot examples semantically similar to topic"""
+        """Select 1-3 few-shot examples semantically similar to topic using domain schemas"""
         try:
-            # Infer topic type from content
-            topic_type = self._infer_topic_type(topic)
+            # First check for domain schemas in the examples cache
+            domain_schemas = self.examples_cache.get("domain_schemas", {})
+            if domain_schemas:
+                # Use semantic matching against domain schemas
+                topic_family = self._infer_topic_family_from_schemas(topic, domain_schemas)
+            else:
+                # Fallback to previous topic inference
+                topic_family = self._infer_topic_type(topic)
 
-            topic_examples = self.examples_cache.get(topic_type, {})
-            mode_examples = topic_examples.get(mode, topic_examples.get("balanced", []))
+            # Try to get examples for this agent type and topic family
+            agent_examples = self.examples_cache.get(agent_name, {})
+            if not agent_examples:
+                # Fallback to perception examples if agent-specific not found
+                agent_examples = self.examples_cache.get("perception", {})
+            
+            # Look for topic-specific examples
+            topic_examples = None
+            for example_key in agent_examples.keys():
+                if topic_family in example_key or any(keyword in example_key.lower() 
+                    for keyword in self._get_topic_keywords(topic_family)):
+                    topic_examples = agent_examples[example_key]
+                    break
+            
+            # If no topic-specific examples, use generic story examples
+            if not topic_examples:
+                topic_examples = agent_examples.get("story_creative", 
+                                                  agent_examples.get("educational", []))
 
             # Return 1-3 examples as per canonical specification
-            if isinstance(mode_examples, list):
-                return mode_examples[:3]
+            if isinstance(topic_examples, list):
+                return topic_examples[:3]
+            elif isinstance(topic_examples, dict):
+                # Handle nested structure
+                mode_examples = topic_examples.get(mode, topic_examples.get("balanced", []))
+                if isinstance(mode_examples, list):
+                    return mode_examples[:3]
+            
             return []
         except Exception as e:
             logger.warning(f"Canonical example selection failed: {e}")
             return []
+
+    def _infer_topic_family_from_schemas(self, topic: str, domain_schemas: Dict[str, Any]) -> str:
+        """Infer topic family using semantic matching against domain schemas"""
+        topic_lower = topic.lower()
+        
+        # Calculate similarity scores for each domain
+        best_match = "story"  # default
+        best_score = 0
+        
+        for domain_name, schema in domain_schemas.items():
+            score = 0
+            topic_role = schema.get("topic_role", "")
+            topic_goal = schema.get("topic_goal", "")
+            
+            # Simple keyword matching with weights
+            role_keywords = topic_role.lower().split()
+            goal_keywords = topic_goal.lower().split()
+            
+            for keyword in role_keywords:
+                if keyword in topic_lower:
+                    score += 2  # Role keywords have higher weight
+            
+            for keyword in goal_keywords:
+                if keyword in topic_lower:
+                    score += 1
+                    
+            # Additional domain-specific keyword matching
+            domain_keywords = self._get_topic_keywords(domain_name)
+            for keyword in domain_keywords:
+                if keyword in topic_lower:
+                    score += 3  # Direct domain match has highest weight
+            
+            if score > best_score:
+                best_score = score
+                best_match = domain_name
+        
+        logger.debug(f"Topic '{topic}' mapped to domain '{best_match}' with score {best_score}")
+        return best_match
+
+    def _get_topic_keywords(self, domain: str) -> List[str]:
+        """Get keywords for topic domain matching"""
+        domain_keywords = {
+            "story": ["story", "narrative", "character", "plot", "fiction", "creative", "write"],
+            "education": ["lesson", "teach", "learn", "student", "curriculum", "educational", "school"],
+            "research": ["research", "study", "methodology", "analysis", "academic", "hypothesis"],
+            "product": ["product", "feature", "user", "business", "development", "software"],
+            "marketing": ["marketing", "campaign", "audience", "brand", "promotion", "advertising"],
+            "healthcare_nonclinical": ["health", "wellness", "fitness", "stress", "mental health"],
+            "legal_plain": ["legal", "law", "rights", "contract", "compliance"],
+            "engineering": ["engineering", "system", "architecture", "technical", "software", "design"],
+            "data_science": ["data", "analysis", "model", "prediction", "statistics", "machine learning"],
+            "personal_productivity": ["productivity", "time management", "goals", "habits", "organization"],
+            "accessibility": ["accessibility", "inclusive", "disability", "usability", "universal design"]
+        }
+        return domain_keywords.get(domain, [])
 
     def _infer_topic_type(self, topic: str) -> str:
         """Infer topic type for example selection"""
