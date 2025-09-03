@@ -10,6 +10,7 @@ import json
 from typing import Dict, Any, List, Optional, Union
 from datetime import datetime
 from dataclasses import dataclass
+from pathlib import Path
 
 from utils.logging_cfg import get_agent_logger
 
@@ -55,49 +56,91 @@ class EvaluatorResult:
 class EvaluatorAgent:
     """
     Evaluator Agent - Blueprint-compliant branch scoring and ranking
-
-    Role: Score and rank branches based on multiple criteria (relevance, creativity, safety, estimated cost),
-    provide final ordering and top recommendation.
-
-    Features:
-    - Multi-criteria scoring with configurable weights
-    - Safety override policies
-    - Deterministic tie-breaking
-    - Cost-negative weighting
-    - Strict JSON output validation
+    Now prompt-driven and supports domain-specific weighting.
     """
 
     def __init__(self, config: Dict[str, Any], llm_provider=None):
         self.config = config
         self.llm_provider = llm_provider
+        self.prompt_audit_enabled = config.get("PROMPT_AUDIT", False)
+        self.audit_log_dir = config.get("audit_log_dir", "internal_checks")
 
-        # Canonical prompt specification constants
-        self.RETRY_MAX = 3
-        self.STRICT_JSON_INSTRUCTION = (
-            "RESPONSE FORMAT: Return only a single JSON object exactly matching the schema provided below. "
-            "Do not include explanatory text, code fences, or extra fields."
-        )
-        self.RETRY_INSTRUCTION = (
-            "If previous response failed JSON validation, strictly produce valid JSON only (no commentary). "
-            "If confused, reduce response complexity."
-        )
+    async def invoke(
+        self, workspace: Dict[str, Any], agent_config: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Blueprint-compliant invoke method for Evaluator Agent.
+        Scores and ranks branches using a prompt-driven approach.
+        """
+        prompt_payload = agent_config.get("prompt_payload")
+        if not prompt_payload or not self.llm_provider:
+            logger.error("Evaluator agent requires a prompt payload and LLM provider.")
+            return self._empty_response(workspace.get("session_id"))
 
-        # Temperature for deterministic scoring (critical task)
-        self.temperature = 0.1
+        try:
+            logger.info("Invoking Evaluator Agent with LLM-based evaluation.")
+            
+            llm_response = await self.llm_provider.generate(
+                prompt=prompt_payload["prompt"],
+                temperature=prompt_payload["temperature"],
+                max_tokens=prompt_payload["max_tokens"],
+                schema=prompt_payload["schema"]
+            )
 
-        logger.info("Evaluator Agent initialized with canonical specification")
+            # Add call metadata
+            llm_response["call_metadata"] = {
+                "provider": self.llm_provider.provider_name,
+                "model": self.llm_provider.model_name,
+                "prompt_hash": hash(prompt_payload["prompt"]),
+                "timestamp": datetime.utcnow().isoformat()
+            }
 
-    async def initialize(self):
-        """Initialize the evaluator agent"""
-        logger.info("Initializing Evaluator Agent")
-        # Initialize evaluation resources
-        logger.info("Evaluator Agent initialized successfully")
+            if self.prompt_audit_enabled:
+                self._log_prompt_audit(prompt_payload, llm_response)
 
-    async def cleanup(self):
-        """Cleanup evaluator agent resources"""
-        logger.info("Cleaning up Evaluator Agent")
-        # Clear any cached data
-        logger.info("Evaluator Agent cleanup completed")
+            return llm_response
+
+        except Exception as e:
+            logger.error(f"LLM-based evaluation failed: {e}")
+            return self._empty_response(workspace.get("session_id"))
+
+    def _log_prompt_audit(self, prompt_payload: Dict[str, Any], response: Dict[str, Any]):
+        """Logs outgoing prompts and metadata for auditing."""
+        try:
+            ts = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+            log_path = Path(self.audit_log_dir)
+            log_path.mkdir(exist_ok=True)
+            log_file = log_path / f"llm_prompts_{ts}.ndjson"
+            
+            audit_record = {
+                "timestamp": datetime.utcnow().isoformat(),
+                "agent": "evaluator",
+                "prompt_hash": hash(prompt_payload.get("prompt", "")),
+                "metadata": prompt_payload.get("metadata", {}),
+                "response_summary": {
+                    "ranked_branches_count": len(response.get("ranked_branches", [])),
+                    "top_branch_score": response.get("ranked_branches", [{}])[0].get("composite_score", 0)
+                }
+            }
+            
+            with open(log_file, "a", encoding="utf-8") as f:
+                f.write(json.dumps(audit_record) + "\n")
+        except Exception as e:
+            logger.error(f"Failed to write to prompt audit log: {e}")
+
+    def _empty_response(self, session_id: Optional[str]) -> Dict[str, Any]:
+        """Returns a default empty response for error cases."""
+        return {
+            "session_id": session_id,
+            "ranked_branches": [],
+            "call_metadata": {
+                "provider": "local",
+                "model": "error_fallback",
+                "timestamp": datetime.utcnow().isoformat(),
+                "error": "Evaluator agent failed to produce a response."
+            }
+        }
+
 
     async def invoke(
         self, workspace: Dict[str, Any], agent_config: Dict[str, Any]
