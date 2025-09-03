@@ -1,0 +1,135 @@
+{
+  "timestamp": "2025-09-04T03:30:00Z",
+  "test_type": "frontend_integration_validation",
+  "total_tests": 5,
+  "passed": 5,
+  "failed": 0,
+  "success_rate": "100.0%",
+  "llm_provider_compatible": true,
+  "frontend_features_validated": [
+    "domain_detection_api",
+    "enhanced_ptg_generation",
+    "response_format_compatibility",
+    "topic_metadata_injection",
+    "multi_domain_support",
+    "backward_compatibility"
+  ],
+  "system_status": "frontend_ready",
+  "test_details": [
+    {
+      "test_case": {
+        "name": "Story Creation (original functionality)",
+        "topic": "Write a mystery story about a lighthouse keeper",
+        "expected_domain": "story",
+        "mode": "creative",
+        "agent_type": "creative"
+      },
+      "detected_domain": "story",
+      "prompt_length": 4650,
+      "has_required_fields": {
+        "prompt": true,
+        "temperature": true,
+        "schema": true,
+        "topic_metadata": true
+      },
+      "prompt_quality": {
+        "contains_schema": true,
+        "contains_instructions": true,
+        "contains_topic_context": true
+      },
+      "passed": true
+    },
+    {
+      "test_case": {
+        "name": "Educational Content",
+        "topic": "Create a lesson plan for teaching fractions to 4th graders",
+        "expected_domain": "education",
+        "mode": "balanced",
+        "agent_type": "general"
+      },
+      "detected_domain": "education",
+      "prompt_length": 4705,
+      "has_required_fields": {
+        "prompt": true,
+        "temperature": true,
+        "schema": true,
+        "topic_metadata": true
+      },
+      "prompt_quality": {
+        "contains_schema": true,
+        "contains_instructions": true,
+        "contains_topic_context": true
+      },
+      "passed": true
+    },
+    {
+      "test_case": {
+        "name": "Product Development",
+        "topic": "Write user stories for a mobile banking app feature",
+        "expected_domain": "product",
+        "mode": "focused",
+        "agent_type": "analytical"
+      },
+      "detected_domain": "product",
+      "prompt_length": 4622,
+      "has_required_fields": {
+        "prompt": true,
+        "temperature": true,
+        "schema": true,
+        "topic_metadata": true
+      },
+      "prompt_quality": {
+        "contains_schema": true,
+        "contains_instructions": true,
+        "contains_topic_context": true
+      },
+      "passed": true
+    },
+    {
+      "test_case": {
+        "name": "Research Planning",
+        "topic": "Design an A/B testing methodology for e-commerce conversion",
+        "expected_domain": "research",
+        "mode": "conservative",
+        "agent_type": "research"
+      },
+      "detected_domain": "research",
+      "prompt_length": 4667,
+      "has_required_fields": {
+        "prompt": true,
+        "temperature": true,
+        "schema": true,
+        "topic_metadata": true
+      },
+      "prompt_quality": {
+        "contains_schema": true,
+        "contains_instructions": true,
+        "contains_topic_context": true
+      },
+      "passed": true
+    },
+    {
+      "test_case": {
+        "name": "Health & Wellness",
+        "topic": "Create a stress management guide for college students",
+        "expected_domain": "healthcare_nonclinical",
+        "mode": "conservative",
+        "agent_type": "general"
+      },
+      "detected_domain": "healthcare_nonclinical",
+      "prompt_length": 4721,
+      "has_required_fields": {
+        "prompt": true,
+        "temperature": true,
+        "schema": true,
+        "topic_metadata": true
+      },
+      "prompt_quality": {
+        "contains_schema": true,
+        "contains_instructions": true,
+        "contains_topic_context": true
+      },
+      "passed": true
+    }
+  ]
+}

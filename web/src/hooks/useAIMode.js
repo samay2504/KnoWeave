@@ -62,24 +62,33 @@ export const useAIMode = (initialMode = 'balanced') => {
   };
 
   /**
-   * Generate prompt using current mode
+   * Generate prompt using current mode with domain support
    */
-  const generatePrompt = async (userPrompt, agentType = 'general') => {
+  const generatePrompt = async (userPrompt, agentType = 'general', options = {}) => {
     setIsLoading(true);
     setError(null);
 
     try {
+      const requestBody = {
+        user_prompt: userPrompt,
+        agent_type: agentType,
+        mode: currentMode,
+        mode_config: modeConfig,
+        // Support for topic-agnostic functionality
+        topic: options.topic || userPrompt,
+        topic_descriptor: options.topic_descriptor || `User request: ${userPrompt}`,
+        topic_family: options.topic_family,
+        topic_role: options.topic_role,
+        topic_goal: options.topic_goal,
+        context_chunks: options.context_chunks || [],
+      };
+
       const response = await fetch(`${API_BASE}/ptg/generate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          user_prompt: userPrompt,
-          agent_type: agentType,
-          mode: currentMode,
-          mode_config: modeConfig,
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
@@ -131,6 +140,39 @@ export const useAIMode = (initialMode = 'balanced') => {
     initializeMode();
   }, [initialMode]);
 
+  /**
+   * Detect domain from user input text
+   */
+  const detectDomain = async (text) => {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`${API_BASE}/agents/perception/detect-domain`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          text: text,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to detect domain: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      return result;
+    } catch (err) {
+      console.error('Error detecting domain:', err);
+      setError(err.message);
+      return { topic_family: 'story', confidence: 0.0 }; // Fallback
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return {
     currentMode,
     modeConfig,
@@ -138,6 +180,7 @@ export const useAIMode = (initialMode = 'balanced') => {
     error,
     updateMode,
     generatePrompt,
+    detectDomain,
     getAvailableModes,
     clearError: () => setError(null),
   };

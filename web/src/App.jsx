@@ -6,13 +6,14 @@ import Callback from './components/Callback';
 import GraphView from './components/GraphView';
 import HealthCheck from './components/HealthCheck';
 import ModeSelector from './components/ModeSelector';
+import DomainSelector from './components/DomainSelector';
 import { useAIMode, useSession } from './hooks/useAIMode';
-import { AI_MODES, DEFAULT_MODE, API_CONFIG } from './config/constants';
+import { AI_MODES, DEFAULT_MODE, API_CONFIG, TOPIC_DOMAINS, DOMAIN_CONFIGS, DEFAULT_DOMAIN } from './config/constants';
 import './index.css';
 
 const API_BASE_URL = API_CONFIG.BASE_URL;
 
-// Dashboard component with mode selection integration
+// Dashboard component with mode selection and domain support
 const Dashboard = ({ user }) => {
   const [currentSessionId, setCurrentSessionId] = useState(null);
   const [storyContent, setStoryContent] = useState('');
@@ -21,12 +22,15 @@ const Dashboard = ({ user }) => {
   const [generatedPrompt, setGeneratedPrompt] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [agentType, setAgentType] = useState('general');
+  const [currentDomain, setCurrentDomain] = useState(DEFAULT_DOMAIN);
+  const [isDomainDetectionEnabled, setIsDomainDetectionEnabled] = useState(true);
 
   // Use custom hooks for AI mode and session management
   const {
     currentMode,
     updateMode,
     generatePrompt,
+    detectDomain,
     isLoading: modeLoading,
     error: modeError,
     clearError
@@ -60,6 +64,24 @@ const Dashboard = ({ user }) => {
   }, [isSessionActive, user, createSession, sessionId]);
 
   /**
+   * Handle domain change from selector
+   */
+  const handleDomainChange = async (newDomain, domainConfig) => {
+    try {
+      setCurrentDomain(newDomain);
+      
+      // Auto-switch to preferred mode for domain
+      if (domainConfig && domainConfig.preferredMode && domainConfig.preferredMode !== currentMode) {
+        await updateMode(domainConfig.preferredMode);
+      }
+      
+      console.log(`Domain changed to: ${newDomain}`);
+    } catch (err) {
+      console.error('Failed to update domain:', err);
+    }
+  };
+
+  /**
    * Handle mode change from selector
    */
   const handleModeChange = async (newMode, modeConfig) => {
@@ -72,7 +94,27 @@ const Dashboard = ({ user }) => {
   };
 
   /**
-   * Generate canonical prompt using PTG system
+   * Auto-detect domain from user input
+   */
+  const handleDomainDetection = async (text) => {
+    if (!isDomainDetectionEnabled || !text.trim()) return;
+
+    try {
+      const detection = await detectDomain(text);
+      if (detection && detection.topic_family && detection.topic_family !== currentDomain) {
+        const confidence = detection.domain_confidence || 0;
+        if (confidence > 0.5) {
+          setCurrentDomain(detection.topic_family);
+          console.log(`Auto-detected domain: ${detection.topic_family} (confidence: ${confidence})`);
+        }
+      }
+    } catch (err) {
+      console.error('Domain detection failed:', err);
+    }
+  };
+
+  /**
+   * Generate canonical prompt using PTG system with domain support
    */
   const handleGeneratePrompt = async () => {
     if (!userPrompt.trim()) return;
@@ -81,8 +123,21 @@ const Dashboard = ({ user }) => {
     clearError();
 
     try {
-      const result = await generatePrompt(userPrompt, agentType);
-      setGeneratedPrompt(result.canonical_prompt);
+      // Auto-detect domain if enabled
+      if (isDomainDetectionEnabled) {
+        await handleDomainDetection(userPrompt);
+      }
+
+      const domainConfig = DOMAIN_CONFIGS[currentDomain];
+      const result = await generatePrompt(userPrompt, agentType, {
+        topic: userPrompt,
+        topic_descriptor: `${domainConfig?.name || 'General'} content: ${userPrompt}`,
+        topic_family: currentDomain,
+        topic_role: domainConfig?.name?.toLowerCase()?.replace(/\s+/g, '_') || 'assistant',
+        topic_goal: `create_${currentDomain}_content`,
+      });
+      
+      setGeneratedPrompt(result.canonical_prompt || result.prompt);
     } catch (err) {
       console.error('Failed to generate prompt:', err);
     } finally {
@@ -162,8 +217,20 @@ const Dashboard = ({ user }) => {
                 <svg className="w-6 h-6 mr-3 animate-pulse" fill="currentColor" viewBox="0 0 24 24">
                   <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
                 </svg>
-                AI Mode & Prompt Generation
+                Content Domain & AI Mode
               </h3>
+
+              {/* Domain Selector */}
+              <div className="mb-6">
+                <DomainSelector
+                  currentDomain={currentDomain}
+                  onDomainChange={handleDomainChange}
+                  disabled={modeLoading}
+                  showDescription={true}
+                  showExamples={false}
+                  className="cyber-input"
+                />
+              </div>
 
               {/* Mode Selector */}
               <div className="mb-6">
@@ -174,6 +241,19 @@ const Dashboard = ({ user }) => {
                   showDescription={true}
                   className="cyber-input"
                 />
+              </div>
+
+              {/* Domain Detection Toggle */}
+              <div className="mb-4">
+                <label className="flex items-center space-x-3 text-sm text-gray-600">
+                  <input
+                    type="checkbox"
+                    checked={isDomainDetectionEnabled}
+                    onChange={(e) => setIsDomainDetectionEnabled(e.target.checked)}
+                    className="h-4 w-4 text-blue-600 rounded border-gray-300"
+                  />
+                  <span>Auto-detect content domain from input</span>
+                </label>
               </div>
 
               {/* Agent Type Selection */}
