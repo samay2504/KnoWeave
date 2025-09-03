@@ -1,9 +1,109 @@
 {
   "_metadata": {
-    "version": "1.0.0",
-    "description": "Canonical few-shot examples for 6-agent Human-AI Co-Creation system",
-    "updated": "2025-09-01",
-    "usage": "PTG selects examples semantically similar to topic using embeddings"
+    "version": "1.1.0",
+    "description": "Canonical few-shot examples for 6-agent Human-AI Co-Creation system with multi-domain support",
+    "updated": "2025-09-03",
+    "usage": "PTG selects examples semantically similar to topic using embeddings",
+    "hot_reloadable": true,
+    "domains": ["story", "education", "research", "product", "marketing", "healthcare_nonclinical", "legal_plain", "engineering", "data_science", "personal_productivity", "accessibility"]
+  },
+
+  "domain_schemas": {
+    "story": {
+      "topic_family": "narrative",
+      "topic_role": "creative_writer",
+      "topic_goal": "continue story while preserving character consistency and plot coherence",
+      "output_schema": {
+        "title": "string",
+        "events": [{"id": "string", "summary": "string", "actor": "string", "time": "string|null"}],
+        "paragraph": "string (3-4 sentences)",
+        "flags": {"unverified_facts": ["string"], "invented_facts": ["string"]}
+      }
+    },
+    "education": {
+      "topic_family": "pedagogical",
+      "topic_role": "curriculum_designer", 
+      "topic_goal": "create structured learning activities with clear objectives and assessments",
+      "output_schema": {
+        "title": "string",
+        "learning_objectives": ["string"],
+        "activities": [{"duration_min": "number", "description": "string", "materials": ["string"]}],
+        "assessment": [{"type": "string", "questions": ["string"]}],
+        "flags": {"alignment_issues": ["string"], "prerequisite_gaps": ["string"]}
+      }
+    },
+    "research": {
+      "topic_family": "academic",
+      "topic_role": "research_methodologist",
+      "topic_goal": "design rigorous research approaches with clear methodology and validation",
+      "output_schema": {
+        "title": "string",
+        "methodology": {"approach": "string", "participants": "string", "data_collection": ["string"]},
+        "variables": {"independent": ["string"], "dependent": ["string"], "controls": ["string"]},
+        "validation": {"internal": ["string"], "external": ["string"]},
+        "flags": {"ethical_concerns": ["string"], "bias_risks": ["string"]}
+      }
+    },
+    "product": {
+      "topic_family": "business",
+      "topic_role": "product_manager",
+      "topic_goal": "develop product features and strategies based on user needs and business objectives",
+      "output_schema": {
+        "title": "string",
+        "problem_analysis": {"root_causes": ["string"], "impact_metrics": ["string"]},
+        "solutions": [{"feature": "string", "effort": "string", "impact": "string", "timeline": "string"}],
+        "success_metrics": ["string"],
+        "flags": {"technical_constraints": ["string"], "regulatory_risks": ["string"]}
+      }
+    },
+    "marketing": {
+      "topic_family": "business",
+      "topic_role": "marketing_strategist",
+      "topic_goal": "create data-driven marketing campaigns that resonate with target audiences",
+      "output_schema": {
+        "title": "string",
+        "target_personas": [{"name": "string", "demographics": "string", "pain_points": ["string"]}],
+        "channels": [{"channel": "string", "tactics": ["string"], "budget_allocation": "string"}],
+        "messaging": {"value_prop": "string", "key_messages": ["string"]},
+        "flags": {"attribution_challenges": ["string"], "market_risks": ["string"]}
+      }
+    },
+    "healthcare_nonclinical": {
+      "topic_family": "healthcare",
+      "topic_role": "health_educator",
+      "topic_goal": "provide evidence-based health information and wellness guidance (non-diagnostic)",
+      "output_schema": {
+        "title": "string",
+        "evidence_base": {"sources": ["string"], "strength": "string"},
+        "recommendations": [{"technique": "string", "instructions": "string", "frequency": "string"}],
+        "disclaimers": ["string"],
+        "flags": {"medical_boundaries": ["string"], "evidence_quality": ["string"]}
+      }
+    },
+    "engineering": {
+      "topic_family": "technical",
+      "topic_role": "systems_architect",
+      "topic_goal": "design scalable technical solutions with clear trade-offs and implementation paths",
+      "output_schema": {
+        "title": "string",
+        "current_state": {"bottlenecks": ["string"], "constraints": ["string"]},
+        "proposed_architecture": [{"component": "string", "purpose": "string", "technology": "string"}],
+        "trade_offs": [{"option": "string", "pros": ["string"], "cons": ["string"]}],
+        "flags": {"complexity_risks": ["string"], "migration_challenges": ["string"]}
+      }
+    },
+    "accessibility": {
+      "topic_family": "inclusive_design",
+      "topic_role": "accessibility_specialist",
+      "topic_goal": "ensure digital content and experiences are usable by people with diverse abilities",
+      "output_schema": {
+        "title": "string",
+        "accessibility_audit": [{"issue": "string", "wcag_level": "string", "user_impact": "string"}],
+        "remediation_plan": [{"fix": "string", "priority": "string", "effort": "string", "testing": "string"}],
+        "inclusive_design": ["string"],
+        "flags": {"compliance_gaps": ["string"], "user_testing_needed": ["string"]}
+      }
+    }
   },
 
   "perception": {
@@ -62,6 +162,66 @@
           "safe_to_continue": true,
           "warnings": [],
           "call_metadata": {"provider": "openai", "model": "gpt-4", "latency_ms": 750, "tokens": 110}
+        }
+      }
+    ],
+    "product_management": [
+      {
+        "input": {
+          "session_id": "demo_003",
+          "input_text": "Mobile banking app users are abandoning the transfer flow at 65% rate. User research shows confusion about international transfer fees.",
+          "attachments": [],
+          "context_chunks": [],
+          "mode": "balanced"
+        },
+        "output": {
+          "session_id": "demo_003",
+          "summary_short": "Product issue analysis for mobile banking transfer flow abandonment",
+          "summary_long": "User reports high abandonment rate (65%) in mobile banking transfer flow, specifically related to confusion about international transfer fees. This suggests UX/UI problems and need for clearer fee communication.",
+          "title": "Banking Transfer Flow UX Problem",
+          "intents": ["product_analysis", "ux_optimization", "user_research_insights"],
+          "entities": [
+            {"name": "mobile banking app", "type": "PRODUCT", "start": 0, "end": 18, "confidence": 0.95},
+            {"name": "65%", "type": "METRIC", "start": 58, "end": 61, "confidence": 0.98},
+            {"name": "international transfer fees", "type": "FEATURE", "start": 120, "end": 148, "confidence": 0.92}
+          ],
+          "sentiment": {"label": "negative", "score": -0.6},
+          "key_phrases": ["abandoning", "transfer flow", "65% rate", "confusion", "international transfer fees"],
+          "tags": ["product", "banking", "ux_problem", "user_research"],
+          "recommended_chunks": [],
+          "safe_to_continue": true,
+          "warnings": [],
+          "call_metadata": {"provider": "openai", "model": "gpt-4", "latency_ms": 820, "tokens": 125}
+        }
+      }
+    ],
+    "healthcare_wellness": [
+      {
+        "input": {
+          "session_id": "demo_004",
+          "input_text": "Creating wellness content about stress management techniques for office workers experiencing burnout symptoms.",
+          "attachments": [],
+          "context_chunks": [],
+          "mode": "conservative"
+        },
+        "output": {
+          "session_id": "demo_004",
+          "summary_short": "Request for evidence-based stress management content for office workers",
+          "summary_long": "User wants to create wellness content focused on stress management techniques specifically for office workers who are experiencing burnout symptoms. Must be evidence-based and avoid medical advice.",
+          "title": "Office Worker Stress Management Content",
+          "intents": ["health_education", "wellness_content", "stress_management"],
+          "entities": [
+            {"name": "stress management", "type": "HEALTH_TOPIC", "start": 34, "end": 51, "confidence": 0.96},
+            {"name": "office workers", "type": "TARGET_AUDIENCE", "start": 67, "end": 81, "confidence": 0.94},
+            {"name": "burnout symptoms", "type": "HEALTH_CONDITION", "start": 95, "end": 111, "confidence": 0.90}
+          ],
+          "sentiment": {"label": "neutral", "score": 0.1},
+          "key_phrases": ["wellness content", "stress management", "office workers", "burnout symptoms"],
+          "tags": ["health", "wellness", "workplace", "stress"],
+          "recommended_chunks": [],
+          "safe_to_continue": true,
+          "warnings": ["medical_boundaries_required"],
+          "call_metadata": {"provider": "openai", "model": "gpt-4", "latency_ms": 790, "tokens": 115}
         }
       }
     ]
