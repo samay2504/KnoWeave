@@ -261,6 +261,11 @@ class GraphManagerAgent:
     ) -> None:
         """Extract entities from perception and planning data to create nodes"""
 
+        # Get domain information from perception data metadata
+        perception_metadata = perception_data.get("metadata", {})
+        topic_family = perception_metadata.get("topic_family", "unknown")
+        topic_role = perception_metadata.get("topic_role", "unknown")
+
         # Extract entities from perception data
         entities = perception_data.get("entities", [])
         for entity in entities:
@@ -275,6 +280,9 @@ class GraphManagerAgent:
                         "entity_type": entity["label"],
                         "confidence": entity.get("confidence", 1.0),
                         "source": "perception",
+                        "domain": topic_family,  # Add domain metadata
+                        "topic_role": topic_role,
+                        "node_category": self._get_domain_node_category(entity["label"], topic_family),
                     },
                 )
                 self.nodes[node_id] = node
@@ -351,8 +359,83 @@ class GraphManagerAgent:
             "ORG": "organization",
             "PRODUCT": "object",
             "WORK_OF_ART": "object",
+            # Additional mappings for multi-domain support
+            "CONCEPT": "concept",
+            "EDUCATION_LEVEL": "demographic",
+            "HEALTH_TOPIC": "concept",
+            "TARGET_AUDIENCE": "demographic",
+            "HEALTH_CONDITION": "medical_concept",
+            "METHODOLOGY": "process",
+            "TREATMENT": "intervention",
+            "METRIC": "measurement",
+            "POPULATION": "demographic",
+            "ARCHITECTURE_PATTERN": "technical_concept",
+            "SYSTEM_TYPE": "technical_artifact",
+            "PERFORMANCE_REQUIREMENT": "constraint",
+            "INTEGRATION": "technical_component",
+            "DATA_SOURCE": "information_source",
+            "OBJECTIVE": "goal",
+            "LEGAL_CONCEPT": "legal_framework",
+            "REGULATION": "policy",
+            "TIMEFRAME": "temporal",
+            "CERTIFICATION": "credential",
+            "CONSTRAINT": "limitation",
+            "DELIVERABLE": "artifact",
+            "TECHNOLOGY": "tool",
+            "STANDARD": "framework",
+            "ASSISTIVE_TECH": "accessibility_tool",
+            "INTERACTION_MODE": "interface_method",
         }
         return mapping.get(entity_label, "entity")
+
+    def _get_domain_node_category(self, entity_label: str, topic_family: str) -> str:
+        """Get domain-specific node category for enhanced graph organization"""
+        # Domain-specific categorizations
+        domain_categories = {
+            "story": {
+                "PERSON": "character",
+                "LOCATION": "setting", 
+                "EVENT": "plot_point",
+                "CONCEPT": "theme",
+                "PRODUCT": "story_element"
+            },
+            "education": {
+                "CONCEPT": "learning_concept",
+                "PERSON": "learner_or_instructor",
+                "EDUCATION_LEVEL": "audience",
+                "OBJECTIVE": "learning_objective",
+                "EVENT": "learning_activity"
+            },
+            "research": {
+                "METHODOLOGY": "research_method",
+                "POPULATION": "study_population",
+                "METRIC": "research_metric",
+                "CONCEPT": "research_concept",
+                "OBJECTIVE": "research_question"
+            },
+            "product": {
+                "PRODUCT": "product_entity",
+                "METRIC": "success_metric",
+                "TARGET_AUDIENCE": "user_segment",
+                "CONCEPT": "product_concept",
+                "CONSTRAINT": "product_constraint"
+            },
+            "healthcare_nonclinical": {
+                "HEALTH_TOPIC": "wellness_concept",
+                "HEALTH_CONDITION": "health_indicator",
+                "TARGET_AUDIENCE": "health_demographic",
+                "CONCEPT": "health_principle"
+            },
+            "engineering": {
+                "ARCHITECTURE_PATTERN": "system_pattern",
+                "TECHNOLOGY": "technical_tool",
+                "PERFORMANCE_REQUIREMENT": "system_requirement",
+                "SYSTEM_TYPE": "system_component"
+            }
+        }
+        
+        domain_map = domain_categories.get(topic_family, {})
+        return domain_map.get(entity_label, entity_label.lower())
 
     def _generate_node_id(self, content: str) -> str:
         """Generate unique node ID from content"""

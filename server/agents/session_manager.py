@@ -165,29 +165,48 @@ class PromptTemplateGenerator:
         mode: str = "balanced",
         context_chunks: List[Dict] = None,
         user_constraints: Dict[str, Any] = None,
+        topic_family: str = None,
+        topic_role: str = None,
+        topic_goal: str = None,
         **kwargs,
     ) -> Dict[str, Any]:
         """
         Generate canonical prompt following the strict prompt specification
         Returns PTG payload with strict JSON validation requirements
+        Now supports topic_family, topic_role, topic_goal for topic-agnostic operation
         """
         context_chunks = context_chunks or []
         user_constraints = user_constraints or {}
 
-        # Build PTG payload following canonical format
+        # Infer topic metadata if not provided
+        if not topic_family or not topic_role or not topic_goal:
+            domain_schemas = self.examples_cache.get("domain_schemas", {})
+            inferred_family = self._infer_topic_family_from_schemas(topic, domain_schemas)
+            domain_info = domain_schemas.get(inferred_family, {})
+            
+            topic_family = topic_family or domain_info.get("topic_family", inferred_family)
+            topic_role = topic_role or domain_info.get("topic_role", "assistant")
+            topic_goal = topic_goal or domain_info.get("topic_goal", "provide helpful assistance")
+
+        # Build PTG payload following canonical format with topic metadata
         ptg_payload = {
             "session_id": session_id,
             "topic": topic,
             "topic_descriptor": topic_descriptor,
+            "topic_family": topic_family,
+            "topic_role": topic_role,
+            "topic_goal": topic_goal,
             "mode": mode,
             "context_chunks": context_chunks,
             "user_constraints": user_constraints,
             "agent_name": agent_name,
-            "agent_instructions": self._get_canonical_agent_instructions(agent_name, mode),
-            "few_shot_examples": self._select_canonical_examples(
-                topic, mode, agent_name
+            "agent_instructions": self._get_canonical_agent_instructions(
+                agent_name, mode, topic_family, topic_role, topic_goal
             ),
-            "output_schema": self._get_canonical_schema(agent_name, topic),
+            "few_shot_examples": self._select_canonical_examples(
+                topic, mode, agent_name, topic_family
+            ),
+            "output_schema": self._get_canonical_schema(agent_name, topic_family),
             "max_tokens": self._get_max_tokens(agent_name),
             "temperature": self._get_canonical_temperature(agent_name, mode),
             "stop_sequences": ["\n\n"],
@@ -201,7 +220,12 @@ class PromptTemplateGenerator:
             "temperature": ptg_payload["temperature"],
             "max_tokens": ptg_payload["max_tokens"],
             "schema": ptg_payload["output_schema"],
-            "schema_version": self.schema_version,  # Add schema_version at top level for compatibility
+            "schema_version": self.schema_version,
+            "topic_metadata": {
+                "topic_family": topic_family,
+                "topic_role": topic_role,
+                "topic_goal": topic_goal
+            },
             "metadata": {
                 "agent": agent_name,
                 "session_id": session_id,
@@ -211,8 +235,8 @@ class PromptTemplateGenerator:
             },
         }
 
-    def _get_canonical_agent_instructions(self, agent_name: str, mode: str = "balanced") -> str:
-        """Get canonical system prompts with mode-specific modifications"""
+    def _get_canonical_agent_instructions(self, agent_name: str, mode: str = "balanced", topic_family: str = None, topic_role: str = None, topic_goal: str = None) -> str:
+        """Get canonical system prompts with mode-specific modifications and topic context"""
         # Mode configurations
         MODE_CONFIGS = {
             "conservative": {
@@ -233,55 +257,89 @@ class PromptTemplateGenerator:
             }
         }
         
-        # Get base instructions
+        # Get base instructions with topic context
         base_prompts = {
             "session_manager": (
-                "SYSTEM: You are the Session Manager. Your task is orchestration, not content generation. "
+                f"SYSTEM: You are the Session Manager working on {topic_family or 'general'} content. "
+                f"Your role is {topic_role or 'orchestrator'} to help achieve: {topic_goal or 'assist user'}. "
                 "For each new session, produce: 1) A topology of which agents to call and in which order. "
                 "2) Per-agent prompt payloads using the Prompt Template Generator (PTG) format below. "
                 "3) Validation checks that must be run after each agent's response. "
                 "Always return a JSON object matching the schema provided in OUTPUT_SCHEMA."
             ),
             "perception": (
-                "SYSTEM: You are Perception Agent. Convert the provided input_text and context_chunks "
-                "into structured metadata. Output only JSON matching OUTPUT_SCHEMA. Use provided "
-                "context_chunks for reference. If input is very long, work on the supplied chunk list."
+                f"SYSTEM: You are Perception Agent analyzing {topic_family or 'general'} content. "
+                f"As a {topic_role or 'content analyzer'}, your goal is to {topic_goal or 'extract key information'}. "
+                "Convert the provided input_text and context_chunks into structured metadata. "
+                "Output only JSON matching OUTPUT_SCHEMA. Use provided context_chunks for reference. "
+                "If input is very long, work on the supplied chunk list. "
+                "Include topic_family, topic_role, and topic_goal_suggestions in your analysis."
             ),
             "planner": (
-                "SYSTEM: You are Planner Agent. Using perception metadata and the provided chunks, "
-                "author N candidate branches for the session. Each branch must be independent, "
-                "contain an estimated cost (time/LLM tokens), required actions, required agents, "
-                "and a short rationale. Output strictly as JSON array named 'branches' following OUTPUT_SCHEMA."
+                f"SYSTEM: You are Planner Agent for {topic_family or 'general'} projects. "
+                f"As a {topic_role or 'strategic planner'}, your objective is to {topic_goal or 'create actionable plans'}. "
+                "Using perception metadata and the provided chunks, author N candidate branches for the session. "
+                "Each branch must be independent, contain an estimated cost (time/LLM tokens), required actions, "
+                "required agents, and a short rationale. Output strictly as JSON array named 'branches' following OUTPUT_SCHEMA. "
+                "Include estimated_costs, steps, and required_resources for all branches."
             ),
             "graph_manager": (
-                "SYSTEM: You are Graph Manager. When given new nodes/edges or branch updates, you must: "
+                f"SYSTEM: You are Graph Manager maintaining {topic_family or 'general'} knowledge graphs. "
+                f"As a {topic_role or 'knowledge organizer'}, your purpose is to {topic_goal or 'structure information'}. "
+                "When given new nodes/edges or branch updates, you must: "
                 "1) Insert or update nodes/edges into ArangoDB; if Arango unavailable, write into Mongo "
                 "with identical schema. 2) Apply node-merge heuristics using embedding similarity "
                 "(threshold configurable). 3) Prune nodes based on age/usage/score and update snapshot. "
-                "Return only JSON conforming to OUTPUT_SCHEMA."
+                "Return only JSON conforming to OUTPUT_SCHEMA. Include meta.domain field for domain-specific nodes."
             ),
             "verifier": (
-                "SYSTEM: You are Verifier Agent. Take a branch and its referenced chunks; verify: "
+                f"SYSTEM: You are Verifier Agent for {topic_family or 'general'} content quality. "
+                f"As a {topic_role or 'quality assurer'}, your mission is to {topic_goal or 'ensure accuracy and consistency'}. "
+                "Take a branch and its referenced chunks; verify: "
                 "- Factual consistency with chunks - Grammar and readability "
                 "- Safety & policy checks (e.g., PII, disallowed topics) "
+                "- Domain-specific consistency (e.g., for education: objective alignment; for research: method feasibility) "
                 "Return single JSON per branch with reasons and suggested corrections."
             ),
             "evaluator": (
-                "SYSTEM: You are Evaluator Agent. For an array of branches, compute multi-criteria "
-                "scores and produce a composite ranking. Use scoring weights provided in input. "
+                f"SYSTEM: You are Evaluator Agent for {topic_family or 'general'} content scoring. "
+                f"As a {topic_role or 'quality evaluator'}, your goal is to {topic_goal or 'rank and score outputs'}. "
+                "For an array of branches, compute multi-criteria scores and produce a composite ranking. "
+                "Use scoring weights provided in input. Apply domain-specific weighting when appropriate "
+                "(e.g., higher creativity weight for story, higher accuracy weight for research). "
                 "Output JSON exactly matching schema."
             ),
         }
         
         base_instruction = base_prompts.get(
-            agent_name, "SYSTEM: You are an AI assistant. Follow instructions strictly."
+            agent_name, f"SYSTEM: You are an AI assistant specializing in {topic_family or 'general'} tasks. Follow instructions strictly."
         )
         
         # Add mode-specific instructions
         mode_config = MODE_CONFIGS.get(mode, MODE_CONFIGS["balanced"])
         mode_suffix = f"\n\nMODE: {mode.upper()} - {mode_config['description']}. {mode_config['suffix']}"
         
-        return base_instruction + mode_suffix
+        # Add topic-specific guidance
+        topic_suffix = ""
+        if topic_family:
+            topic_guidance = {
+                "story": "Preserve character consistency, POV, and narrative flow. Maintain creative temperature for story generation.",
+                "education": "Ensure age-appropriate content, clear learning objectives, and measurable outcomes.",
+                "research": "Prioritize methodological rigor, ethical considerations, and reproducibility.",
+                "product": "Focus on user needs, business impact, and technical feasibility.",
+                "marketing": "Consider target audience, brand consistency, and measurable metrics.",
+                "healthcare_nonclinical": "Provide evidence-based information while avoiding medical advice.",
+                "legal_plain": "Explain concepts clearly while noting legal advice boundaries.",
+                "engineering": "Balance technical accuracy with practical implementation considerations.",
+                "data_science": "Emphasize data quality, statistical validity, and interpretability.",
+                "personal_productivity": "Focus on actionable, sustainable strategies tailored to individual constraints.",
+                "accessibility": "Ensure inclusive design principles and WCAG compliance.",
+                "teaching_training": "Design engaging, interactive learning experiences with clear outcomes."
+            }
+            guidance = topic_guidance.get(topic_family, "Apply domain best practices and maintain quality standards.")
+            topic_suffix = f"\n\nDOMAIN GUIDANCE: {guidance}"
+        
+        return base_instruction + mode_suffix + topic_suffix
 
     def _get_canonical_schema(self, agent_name: str, topic: str = None) -> Dict[str, Any]:
         """Get canonical output schemas with domain-specific support matching the prompt specification exactly"""
@@ -557,18 +615,17 @@ class PromptTemplateGenerator:
         return token_limits.get(agent_name, 1000)
 
     def _select_canonical_examples(
-        self, topic: str, mode: str, agent_name: str
+        self, topic: str, mode: str, agent_name: str, topic_family: str = None
     ) -> List[Dict[str, Any]]:
-        """Select 1-3 few-shot examples semantically similar to topic using domain schemas"""
+        """Select 1-3 few-shot examples semantically similar to topic using domain schemas and embeddings"""
         try:
-            # First check for domain schemas in the examples cache
-            domain_schemas = self.examples_cache.get("domain_schemas", {})
-            if domain_schemas:
-                # Use semantic matching against domain schemas
-                topic_family = self._infer_topic_family_from_schemas(topic, domain_schemas)
-            else:
-                # Fallback to previous topic inference
-                topic_family = self._infer_topic_type(topic)
+            # Use provided topic_family or infer it
+            if not topic_family:
+                domain_schemas = self.examples_cache.get("domain_schemas", {})
+                if domain_schemas:
+                    topic_family = self._infer_topic_family_from_schemas(topic, domain_schemas)
+                else:
+                    topic_family = self._infer_topic_type(topic)
 
             # Try to get examples for this agent type and topic family
             agent_examples = self.examples_cache.get(agent_name, {})
@@ -576,15 +633,38 @@ class PromptTemplateGenerator:
                 # Fallback to perception examples if agent-specific not found
                 agent_examples = self.examples_cache.get("perception", {})
             
-            # Look for topic-specific examples
+            # Look for topic-specific examples with enhanced matching
             topic_examples = None
+            
+            # First, try exact topic family match
             for example_key in agent_examples.keys():
-                if topic_family in example_key or any(keyword in example_key.lower() 
-                    for keyword in self._get_topic_keywords(topic_family)):
+                if topic_family in example_key:
                     topic_examples = agent_examples[example_key]
                     break
             
-            # If no topic-specific examples, use generic story examples
+            # If no exact match, try keyword matching
+            if not topic_examples:
+                topic_keywords = self._get_topic_keywords(topic_family)
+                for example_key in agent_examples.keys():
+                    if any(keyword in example_key.lower() for keyword in topic_keywords):
+                        topic_examples = agent_examples[example_key]
+                        break
+            
+            # If still no topic-specific examples, try semantic matching on input text
+            if not topic_examples:
+                best_match_key = None
+                best_score = 0
+                
+                for example_key, examples in agent_examples.items():
+                    score = self._calculate_semantic_similarity(topic, example_key)
+                    if score > best_score:
+                        best_score = score
+                        best_match_key = example_key
+                
+                if best_match_key and best_score > 0.3:  # Threshold for relevance
+                    topic_examples = agent_examples[best_match_key]
+            
+            # Final fallback to story examples
             if not topic_examples:
                 topic_examples = agent_examples.get("story_creative", 
                                                   agent_examples.get("educational", []))
@@ -602,6 +682,20 @@ class PromptTemplateGenerator:
         except Exception as e:
             logger.warning(f"Canonical example selection failed: {e}")
             return []
+
+    def _calculate_semantic_similarity(self, topic: str, example_key: str) -> float:
+        """Calculate basic semantic similarity between topic and example key"""
+        # Simple keyword-based similarity as fallback when embeddings unavailable
+        topic_words = set(topic.lower().split())
+        example_words = set(example_key.lower().replace("_", " ").split())
+        
+        if not topic_words or not example_words:
+            return 0.0
+        
+        intersection = topic_words.intersection(example_words)
+        union = topic_words.union(example_words)
+        
+        return len(intersection) / len(union) if union else 0.0
 
     def _infer_topic_family_from_schemas(self, topic: str, domain_schemas: Dict[str, Any]) -> str:
         """Infer topic family using semantic matching against domain schemas"""
@@ -644,17 +738,18 @@ class PromptTemplateGenerator:
     def _get_topic_keywords(self, domain: str) -> List[str]:
         """Get keywords for topic domain matching"""
         domain_keywords = {
-            "story": ["story", "narrative", "character", "plot", "fiction", "creative", "write"],
-            "education": ["lesson", "teach", "learn", "student", "curriculum", "educational", "school"],
-            "research": ["research", "study", "methodology", "analysis", "academic", "hypothesis"],
-            "product": ["product", "feature", "user", "business", "development", "software"],
-            "marketing": ["marketing", "campaign", "audience", "brand", "promotion", "advertising"],
-            "healthcare_nonclinical": ["health", "wellness", "fitness", "stress", "mental health"],
-            "legal_plain": ["legal", "law", "rights", "contract", "compliance"],
-            "engineering": ["engineering", "system", "architecture", "technical", "software", "design"],
-            "data_science": ["data", "analysis", "model", "prediction", "statistics", "machine learning"],
-            "personal_productivity": ["productivity", "time management", "goals", "habits", "organization"],
-            "accessibility": ["accessibility", "inclusive", "disability", "usability", "universal design"]
+            "story": ["story", "narrative", "character", "plot", "fiction", "creative", "write", "novel", "tale"],
+            "education": ["lesson", "teach", "learn", "student", "curriculum", "educational", "school", "class", "pedagogy"],
+            "research": ["research", "study", "methodology", "analysis", "academic", "hypothesis", "experiment", "investigation"],
+            "product": ["product", "feature", "user", "business", "development", "software", "prd", "requirements"],
+            "marketing": ["marketing", "campaign", "audience", "brand", "promotion", "advertising", "messaging", "strategy"],
+            "healthcare_nonclinical": ["health", "wellness", "fitness", "stress", "mental health", "nutrition", "exercise"],
+            "legal_plain": ["legal", "law", "rights", "contract", "compliance", "regulation", "policy", "terms"],
+            "engineering": ["engineering", "system", "architecture", "technical", "software", "design", "infrastructure"],
+            "data_science": ["data", "analysis", "model", "prediction", "statistics", "machine learning", "analytics", "visualization"],
+            "personal_productivity": ["productivity", "time management", "goals", "habits", "organization", "planning", "efficiency"],
+            "accessibility": ["accessibility", "inclusive", "disability", "usability", "universal design", "wcag", "screen reader"],
+            "teaching_training": ["training", "workshop", "skill development", "professional development", "coaching", "mentoring"]
         }
         return domain_keywords.get(domain, [])
 
@@ -679,11 +774,22 @@ class PromptTemplateGenerator:
     def _format_canonical_prompt(
         self, ptg_payload: Dict[str, Any], input_data: Dict[str, Any]
     ) -> str:
-        """Format canonical prompt with strict JSON output requirements"""
+        """Format canonical prompt with strict JSON output requirements and topic metadata"""
         agent_name = ptg_payload["agent_name"]
 
         # Build prompt sections
         system_section = ptg_payload["agent_instructions"]
+
+        # Topic context section with metadata
+        topic_section = f"""
+TOPIC_CONTEXT:
+- topic: {ptg_payload["topic"]}
+- topic_family: {ptg_payload.get("topic_family", "general")}
+- topic_role: {ptg_payload.get("topic_role", "assistant")}
+- topic_goal: {ptg_payload.get("topic_goal", "provide assistance")}
+- descriptor: {ptg_payload["topic_descriptor"]}
+- mode: {ptg_payload["mode"]}
+"""
 
         # Context section
         context_section = ""
@@ -695,6 +801,12 @@ class PromptTemplateGenerator:
                 ]
             )
             context_section = f"\nCONTEXT:\n{chunks_text}\n"
+
+        # Constraints section
+        constraints_section = ""
+        if ptg_payload["user_constraints"]:
+            constraints_text = json.dumps(ptg_payload["user_constraints"], indent=2)
+            constraints_section = f"\nCONSTRAINTS:\n{constraints_text}\n"
 
         # Input section
         input_section = f"\nINPUT:\n{json.dumps(input_data, indent=2)}\n"
@@ -710,10 +822,18 @@ class PromptTemplateGenerator:
             )
             examples_section = f"\nFEW-SHOT EXAMPLES:\n{examples_text}\n"
 
-        # Schema section
-        schema_section = (
-            f"\nOUTPUT_SCHEMA:\n{json.dumps(ptg_payload['output_schema'], indent=2)}\n"
-        )
+        # Schema section with RESPONSE_FORMAT emphasis
+        schema_section = f"""
+OUTPUT_SCHEMA:
+{json.dumps(ptg_payload['output_schema'], indent=2)}
+
+RESPONSE_FORMAT:
+- Return ONLY valid JSON matching the OUTPUT_SCHEMA above
+- Include all required fields as specified in the schema
+- Use appropriate data types (string, number, boolean, array, object)
+- Do not include explanatory text, code fences, or additional commentary
+- Ensure JSON is properly formatted and parseable
+"""
 
         # Instructions section with strict JSON requirement
         instructions_section = f"""
@@ -722,6 +842,7 @@ INSTRUCTIONS:
 - Include all required fields
 - Use appropriate data types
 - Schema version: {self.schema_version}
+- Temperature setting: {ptg_payload.get('temperature', 0.3)}
 
 {self.STRICT_JSON_INSTRUCTION}
 """
@@ -729,7 +850,9 @@ INSTRUCTIONS:
         # Combine all sections
         full_prompt = (
             system_section
+            + topic_section
             + context_section
+            + constraints_section
             + input_section
             + examples_section
             + schema_section
@@ -744,7 +867,9 @@ INSTRUCTIONS:
                 context_section = context_section[:1000] + "...\n"
             full_prompt = (
                 system_section
+                + topic_section
                 + context_section
+                + constraints_section
                 + input_section
                 + examples_section
                 + schema_section

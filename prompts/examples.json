@@ -1,11 +1,11 @@
 {
   "_metadata": {
-    "version": "1.1.0",
-    "description": "Canonical few-shot examples for 6-agent Human-AI Co-Creation system with multi-domain support",
-    "updated": "2025-09-03",
+    "version": "1.2.0",
+    "description": "Canonical few-shot examples for 6-agent Human-AI Co-Creation system with comprehensive multi-domain support",
+    "updated": "2025-09-04",
     "usage": "PTG selects examples semantically similar to topic using embeddings",
     "hot_reloadable": true,
-    "domains": ["story", "education", "research", "product", "marketing", "healthcare_nonclinical", "legal_plain", "engineering", "data_science", "personal_productivity", "accessibility"]
+    "domains": ["story", "education", "research", "product", "marketing", "healthcare_nonclinical", "legal_plain", "engineering", "data_science", "personal_productivity", "accessibility", "teaching_training"]
   },
 
   "domain_schemas": {
@@ -102,6 +102,54 @@
         "remediation_plan": [{"fix": "string", "priority": "string", "effort": "string", "testing": "string"}],
         "inclusive_design": ["string"],
         "flags": {"compliance_gaps": ["string"], "user_testing_needed": ["string"]}
+      }
+    },
+    "legal_plain": {
+      "topic_family": "legal",
+      "topic_role": "legal_educator",
+      "topic_goal": "explain legal concepts in plain language without providing legal advice",
+      "output_schema": {
+        "title": "string",
+        "plain_language_summary": "string",
+        "key_concepts": [{"term": "string", "definition": "string", "example": "string"}],
+        "disclaimers": ["string"],
+        "flags": {"advisory_boundaries": ["string"], "jurisdictional_limits": ["string"]}
+      }
+    },
+    "data_science": {
+      "topic_family": "analytical",
+      "topic_role": "data_scientist",
+      "topic_goal": "design data analysis approaches with clear methodology and validation",
+      "output_schema": {
+        "title": "string",
+        "data_requirements": {"sources": ["string"], "quality_criteria": ["string"]},
+        "analysis_plan": [{"step": "string", "method": "string", "validation": "string"}],
+        "success_metrics": ["string"],
+        "flags": {"data_quality_risks": ["string"], "bias_considerations": ["string"]}
+      }
+    },
+    "personal_productivity": {
+      "topic_family": "self_improvement",
+      "topic_role": "productivity_coach",
+      "topic_goal": "help individuals organize tasks and achieve personal goals efficiently",
+      "output_schema": {
+        "title": "string",
+        "goal_breakdown": [{"milestone": "string", "timeframe": "string", "success_criteria": "string"}],
+        "action_plan": [{"task": "string", "priority": "string", "estimated_effort": "string"}],
+        "tracking_metrics": ["string"],
+        "flags": {"sustainability_concerns": ["string"], "resource_constraints": ["string"]}
+      }
+    },
+    "teaching_training": {
+      "topic_family": "professional_development",
+      "topic_role": "training_designer",
+      "topic_goal": "develop effective training programs and educational materials",
+      "output_schema": {
+        "title": "string",
+        "learning_outcomes": ["string"],
+        "training_modules": [{"topic": "string", "duration": "string", "delivery_method": "string"}],
+        "assessment_strategy": [{"type": "string", "criteria": "string"}],
+        "flags": {"engagement_risks": ["string"], "knowledge_transfer_gaps": ["string"]}
       }
     }
   },
@@ -222,6 +270,193 @@
           "safe_to_continue": true,
           "warnings": ["medical_boundaries_required"],
           "call_metadata": {"provider": "openai", "model": "gpt-4", "latency_ms": 790, "tokens": 115}
+        }
+      }
+    ],
+    "research_methodology": [
+      {
+        "input": {
+          "session_id": "demo_005",
+          "input_text": "Design an A/B test to measure the impact of personalized email subject lines on open rates for e-commerce customers.",
+          "attachments": [],
+          "context_chunks": [],
+          "mode": "balanced"
+        },
+        "output": {
+          "session_id": "demo_005",
+          "summary_short": "A/B test design for personalized email subject line effectiveness",
+          "summary_long": "User needs to design a controlled experiment to test whether personalized email subject lines improve open rates compared to generic ones for e-commerce customers. Requires proper experimental methodology and metrics.",
+          "title": "Email Personalization A/B Test Design",
+          "intents": ["experimental_design", "ab_testing", "email_marketing_optimization"],
+          "entities": [
+            {"name": "A/B test", "type": "METHODOLOGY", "start": 9, "end": 17, "confidence": 0.98},
+            {"name": "personalized email subject lines", "type": "TREATMENT", "start": 43, "end": 76, "confidence": 0.95},
+            {"name": "open rates", "type": "METRIC", "start": 80, "end": 90, "confidence": 0.97},
+            {"name": "e-commerce customers", "type": "POPULATION", "start": 95, "end": 115, "confidence": 0.93}
+          ],
+          "sentiment": {"label": "neutral", "score": 0.0},
+          "key_phrases": ["A/B test", "personalized email", "subject lines", "open rates", "e-commerce"],
+          "tags": ["research", "experimentation", "email_marketing", "personalization"],
+          "recommended_chunks": [],
+          "safe_to_continue": true,
+          "warnings": [],
+          "call_metadata": {"provider": "openai", "model": "gpt-4", "latency_ms": 810, "tokens": 128}
+        }
+      }
+    ],
+    "engineering_architecture": [
+      {
+        "input": {
+          "session_id": "demo_006",
+          "input_text": "Need to design a microservices architecture for a new e-commerce platform that can handle 10,000 concurrent users and integrate with existing payment systems.",
+          "attachments": [],
+          "context_chunks": [],
+          "mode": "balanced"
+        },
+        "output": {
+          "session_id": "demo_006",
+          "summary_short": "Microservices architecture design for high-concurrency e-commerce platform",
+          "summary_long": "User requires a scalable microservices architecture design for an e-commerce platform with specific performance requirements (10,000 concurrent users) and integration constraints with existing payment systems.",
+          "title": "E-commerce Microservices Architecture Design",
+          "intents": ["system_architecture", "scalability_design", "microservices_planning"],
+          "entities": [
+            {"name": "microservices architecture", "type": "ARCHITECTURE_PATTERN", "start": 17, "end": 44, "confidence": 0.97},
+            {"name": "e-commerce platform", "type": "SYSTEM_TYPE", "start": 53, "end": 72, "confidence": 0.95},
+            {"name": "10,000 concurrent users", "type": "PERFORMANCE_REQUIREMENT", "start": 90, "end": 113, "confidence": 0.98},
+            {"name": "payment systems", "type": "INTEGRATION", "start": 145, "end": 160, "confidence": 0.92}
+          ],
+          "sentiment": {"label": "neutral", "score": 0.0},
+          "key_phrases": ["microservices", "e-commerce platform", "concurrent users", "payment systems"],
+          "tags": ["engineering", "architecture", "scalability", "e-commerce"],
+          "recommended_chunks": [],
+          "safe_to_continue": true,
+          "warnings": [],
+          "call_metadata": {"provider": "openai", "model": "gpt-4", "latency_ms": 850, "tokens": 135}
+        }
+      }
+    ],
+    "data_science_analysis": [
+      {
+        "input": {
+          "session_id": "demo_007",
+          "input_text": "Create an exploratory data analysis plan for customer churn prediction using transaction data and demographic information.",
+          "attachments": [],
+          "context_chunks": [],
+          "mode": "balanced"
+        },
+        "output": {
+          "session_id": "demo_007",
+          "summary_short": "EDA plan for customer churn prediction modeling",
+          "summary_long": "User needs a structured exploratory data analysis approach to understand patterns in customer churn using available transaction data and demographic information. Foundation for building predictive models.",
+          "title": "Customer Churn EDA Plan",
+          "intents": ["data_analysis", "predictive_modeling", "customer_analytics"],
+          "entities": [
+            {"name": "exploratory data analysis", "type": "METHODOLOGY", "start": 12, "end": 39, "confidence": 0.96},
+            {"name": "customer churn prediction", "type": "OBJECTIVE", "start": 49, "end": 75, "confidence": 0.98},
+            {"name": "transaction data", "type": "DATA_SOURCE", "start": 82, "end": 98, "confidence": 0.94},
+            {"name": "demographic information", "type": "DATA_SOURCE", "start": 103, "end": 127, "confidence": 0.93}
+          ],
+          "sentiment": {"label": "neutral", "score": 0.0},
+          "key_phrases": ["exploratory data analysis", "customer churn", "transaction data", "demographic information"],
+          "tags": ["data_science", "analytics", "machine_learning", "customer_behavior"],
+          "recommended_chunks": [],
+          "safe_to_continue": true,
+          "warnings": [],
+          "call_metadata": {"provider": "openai", "model": "gpt-4", "latency_ms": 820, "tokens": 132}
+        }
+      }
+    ],
+    "legal_explanation": [
+      {
+        "input": {
+          "session_id": "demo_008",
+          "input_text": "Explain data privacy rights under GDPR in simple terms for website users, including what data can be collected and user rights.",
+          "attachments": [],
+          "context_chunks": [],
+          "mode": "conservative"
+        },
+        "output": {
+          "session_id": "demo_008",
+          "summary_short": "Plain language explanation of GDPR data privacy rights for website users",
+          "summary_long": "User requests a simplified explanation of GDPR data privacy regulations, specifically focusing on data collection practices and user rights that would be appropriate for website visitors to understand.",
+          "title": "GDPR Privacy Rights Plain Language Guide",
+          "intents": ["legal_education", "privacy_explanation", "compliance_guidance"],
+          "entities": [
+            {"name": "data privacy rights", "type": "LEGAL_CONCEPT", "start": 8, "end": 27, "confidence": 0.97},
+            {"name": "GDPR", "type": "REGULATION", "start": 34, "end": 38, "confidence": 0.99},
+            {"name": "website users", "type": "TARGET_AUDIENCE", "start": 57, "end": 70, "confidence": 0.95},
+            {"name": "user rights", "type": "LEGAL_CONCEPT", "start": 110, "end": 121, "confidence": 0.96}
+          ],
+          "sentiment": {"label": "neutral", "score": 0.0},
+          "key_phrases": ["data privacy rights", "GDPR", "simple terms", "user rights"],
+          "tags": ["legal", "privacy", "compliance", "education"],
+          "recommended_chunks": [],
+          "safe_to_continue": true,
+          "warnings": ["legal_advice_boundaries"],
+          "call_metadata": {"provider": "openai", "model": "gpt-4", "latency_ms": 780, "tokens": 118}
+        }
+      }
+    ],
+    "personal_productivity": [
+      {
+        "input": {
+          "session_id": "demo_009",
+          "input_text": "Help me create a 4-week study plan for the AWS Solutions Architect certification exam with limited evening and weekend availability.",
+          "attachments": [],
+          "context_chunks": [],
+          "mode": "balanced"
+        },
+        "output": {
+          "session_id": "demo_009",
+          "summary_short": "Personal study plan for AWS certification with time constraints",
+          "summary_long": "User needs a structured 4-week study plan for AWS Solutions Architect certification exam, working within constraints of limited evening and weekend availability. Requires time-efficient learning strategy.",
+          "title": "AWS Certification Study Plan (Time-Constrained)",
+          "intents": ["study_planning", "certification_prep", "time_management"],
+          "entities": [
+            {"name": "4-week study plan", "type": "TIMEFRAME", "start": 18, "end": 35, "confidence": 0.98},
+            {"name": "AWS Solutions Architect", "type": "CERTIFICATION", "start": 44, "end": 68, "confidence": 0.99},
+            {"name": "certification exam", "type": "OBJECTIVE", "start": 69, "end": 87, "confidence": 0.97},
+            {"name": "limited evening and weekend availability", "type": "CONSTRAINT", "start": 93, "end": 134, "confidence": 0.94}
+          ],
+          "sentiment": {"label": "neutral", "score": 0.0},
+          "key_phrases": ["study plan", "AWS Solutions Architect", "certification exam", "limited availability"],
+          "tags": ["productivity", "certification", "time_management", "aws"],
+          "recommended_chunks": [],
+          "safe_to_continue": true,
+          "warnings": [],
+          "call_metadata": {"provider": "openai", "model": "gpt-4", "latency_ms": 800, "tokens": 125}
+        }
+      }
+    ],
+    "accessibility_audit": [
+      {
+        "input": {
+          "session_id": "demo_010",
+          "input_text": "Create an accessibility checklist for a React component library to ensure WCAG 2.1 AA compliance for screen readers and keyboard navigation.",
+          "attachments": [],
+          "context_chunks": [],
+          "mode": "balanced"
+        },
+        "output": {
+          "session_id": "demo_010",
+          "summary_short": "Accessibility checklist for React component library WCAG compliance",
+          "summary_long": "User needs a comprehensive accessibility checklist specifically for React component library development, focusing on WCAG 2.1 AA compliance with emphasis on screen reader compatibility and keyboard navigation.",
+          "title": "React Component Accessibility Checklist",
+          "intents": ["accessibility_planning", "component_design", "compliance_verification"],
+          "entities": [
+            {"name": "accessibility checklist", "type": "DELIVERABLE", "start": 12, "end": 35, "confidence": 0.97},
+            {"name": "React component library", "type": "TECHNOLOGY", "start": 42, "end": 66, "confidence": 0.98},
+            {"name": "WCAG 2.1 AA", "type": "STANDARD", "start": 77, "end": 88, "confidence": 0.99},
+            {"name": "screen readers", "type": "ASSISTIVE_TECH", "start": 103, "end": 117, "confidence": 0.96},
+            {"name": "keyboard navigation", "type": "INTERACTION_MODE", "start": 122, "end": 141, "confidence": 0.95}
+          ],
+          "sentiment": {"label": "neutral", "score": 0.0},
+          "key_phrases": ["accessibility checklist", "React component", "WCAG 2.1 AA", "screen readers", "keyboard navigation"],
+          "tags": ["accessibility", "react", "compliance", "ux"],
+          "recommended_chunks": [],
+          "safe_to_continue": true,
+          "warnings": [],
+          "call_metadata": {"provider": "openai", "model": "gpt-4", "latency_ms": 840, "tokens": 142}
         }
       }
     ]

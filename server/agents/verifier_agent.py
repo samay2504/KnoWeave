@@ -136,33 +136,255 @@ class VerifierAgent:
             return await self._run_local_verification(workspace)
 
     async def _run_local_verification(self, workspace: Dict[str, Any]) -> Dict[str, Any]:
-        """A local, non-LLM fallback for basic verification."""
+        """A local, non-LLM fallback for basic verification with domain-specific checks."""
         topic_content = workspace.get("topic_content", "")
-        # This is a simplified version of the original logic
+        perception_data = workspace.get("perception_analysis", {})
+        
+        # Get domain information
+        topic_family = perception_data.get("metadata", {}).get("topic_family", "unknown")
+        
+        # Basic checks
         grammar_score = self._check_grammar(topic_content)
         pov_consistency = self._check_pov_consistency(topic_content)
+        
+        # Domain-specific checks
+        domain_issues = self._check_domain_specific_requirements(topic_content, topic_family, perception_data)
         
         issues = []
         if grammar_score < 0.8:
             issues.append({"type": "grammar", "details": "Low grammar score."})
         if not pov_consistency["consistent"]:
             issues.append({"type": "pov", "details": f"Inconsistent POV: {pov_consistency['dominant_pov']}"})
+        
+        issues.extend(domain_issues)
 
         return {
             "branch_id": workspace.get("current_branch_id", "unknown"),
             "factual_consistency": {"score": 0.5, "issues": ["Local fallback cannot verify facts."]},
             "grammar_issues": [i for i in issues if i["type"] == "grammar"],
-            "safety_violations": [],
+            "domain_issues": [i for i in issues if i["type"] == "domain"],
+            "safety_violations": [i for i in issues if i["type"] == "safety"],
             "accept_reject": "needs_revision" if issues else "accept",
-            "suggested_edits": ["Please review for grammar and consistency."],
+            "suggested_edits": self._generate_domain_specific_suggestions(topic_family, issues),
             "confidence": 0.5,
             "call_metadata": {
                 "provider": "local",
                 "model": "pattern_based_fallback",
                 "timestamp": datetime.utcnow().isoformat(),
-                "error": "LLM provider failed, using local verifier."
+                "error": "LLM provider failed, using local verifier.",
+                "domain": topic_family
             }
         }
+
+    def _check_domain_specific_requirements(self, text: str, topic_family: str, perception_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Check domain-specific requirements and constraints"""
+        issues = []
+        text_lower = text.lower()
+        
+        if topic_family == "education":
+            issues.extend(self._check_educational_requirements(text, text_lower, perception_data))
+        elif topic_family == "research":
+            issues.extend(self._check_research_requirements(text, text_lower, perception_data))
+        elif topic_family == "healthcare_nonclinical":
+            issues.extend(self._check_healthcare_boundaries(text, text_lower, perception_data))
+        elif topic_family == "legal_plain":
+            issues.extend(self._check_legal_boundaries(text, text_lower, perception_data))
+        elif topic_family == "product":
+            issues.extend(self._check_product_requirements(text, text_lower, perception_data))
+        elif topic_family == "accessibility":
+            issues.extend(self._check_accessibility_requirements(text, text_lower, perception_data))
+        
+        return issues
+
+    def _check_educational_requirements(self, text: str, text_lower: str, perception_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Check education-specific requirements"""
+        issues = []
+        
+        # Check for learning objectives alignment
+        learning_objectives = perception_data.get("metadata", {}).get("learning_objectives", [])
+        if learning_objectives:
+            for objective in learning_objectives:
+                if objective.lower() not in text_lower:
+                    issues.append({
+                        "type": "domain",
+                        "domain": "education",
+                        "details": f"Content may not align with learning objective: {objective}"
+                    })
+        
+        # Check age-appropriateness indicators
+        audience_level = perception_data.get("metadata", {}).get("audience_level", "general")
+        if audience_level in ["child", "teenager"]:
+            mature_content_indicators = ["violence", "death", "drugs", "alcohol", "sex"]
+            for indicator in mature_content_indicators:
+                if indicator in text_lower:
+                    issues.append({
+                        "type": "domain", 
+                        "domain": "education",
+                        "details": f"Content may not be age-appropriate for {audience_level} audience: {indicator}"
+                    })
+        
+        return issues
+
+    def _check_research_requirements(self, text: str, text_lower: str, perception_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Check research methodology requirements"""
+        issues = []
+        
+        # Check for methodology mentions
+        method_indicators = ["methodology", "method", "approach", "design", "sample", "population"]
+        if not any(indicator in text_lower for indicator in method_indicators):
+            issues.append({
+                "type": "domain",
+                "domain": "research",
+                "details": "Research content should include methodology information"
+            })
+        
+        # Check for ethical considerations
+        if "participants" in text_lower or "subjects" in text_lower:
+            ethical_indicators = ["consent", "ethics", "irb", "approval", "voluntary"]
+            if not any(indicator in text_lower for indicator in ethical_indicators):
+                issues.append({
+                    "type": "domain",
+                    "domain": "research", 
+                    "details": "Research involving participants should mention ethical considerations"
+                })
+        
+        return issues
+
+    def _check_healthcare_boundaries(self, text: str, text_lower: str, perception_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Check healthcare content boundaries"""
+        issues = []
+        
+        # Check for medical advice indicators
+        advice_indicators = ["you should", "i recommend", "i suggest", "prescribed", "diagnosis", "treatment"]
+        for indicator in advice_indicators:
+            if indicator in text_lower:
+                issues.append({
+                    "type": "safety",
+                    "domain": "healthcare",
+                    "details": f"Content may cross medical advice boundaries: '{indicator}'"
+                })
+        
+        # Check for disclaimers
+        disclaimer_indicators = ["consult", "professional", "doctor", "disclaimer", "not medical advice"]
+        has_disclaimer = any(indicator in text_lower for indicator in disclaimer_indicators)
+        
+        medical_terms = ["symptom", "condition", "illness", "disease", "medication"]
+        has_medical_content = any(term in text_lower for term in medical_terms)
+        
+        if has_medical_content and not has_disclaimer:
+            issues.append({
+                "type": "domain",
+                "domain": "healthcare",
+                "details": "Medical content should include appropriate disclaimers"
+            })
+        
+        return issues
+
+    def _check_legal_boundaries(self, text: str, text_lower: str, perception_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Check legal content boundaries"""
+        issues = []
+        
+        # Check for legal advice indicators
+        advice_indicators = ["you should sue", "file a lawsuit", "legal action", "i advise", "my recommendation"]
+        for indicator in advice_indicators:
+            if indicator in text_lower:
+                issues.append({
+                    "type": "safety",
+                    "domain": "legal",
+                    "details": f"Content may provide legal advice: '{indicator}'"
+                })
+        
+        return issues
+
+    def _check_product_requirements(self, text: str, text_lower: str, perception_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Check product management requirements"""
+        issues = []
+        
+        # Check for user-centric language
+        if "user" not in text_lower and "customer" not in text_lower:
+            issues.append({
+                "type": "domain",
+                "domain": "product",
+                "details": "Product content should focus on user/customer needs"
+            })
+        
+        # Check for metrics/measurement
+        metric_indicators = ["measure", "metric", "kpi", "success", "goal", "objective"]
+        if not any(indicator in text_lower for indicator in metric_indicators):
+            issues.append({
+                "type": "domain",
+                "domain": "product",
+                "details": "Product content should include measurable outcomes"
+            })
+        
+        return issues
+
+    def _check_accessibility_requirements(self, text: str, text_lower: str, perception_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Check accessibility requirements"""
+        issues = []
+        
+        # Check for inclusive language
+        exclusive_terms = ["normal users", "able-bodied", "disabled users"]
+        for term in exclusive_terms:
+            if term in text_lower:
+                issues.append({
+                    "type": "domain",
+                    "domain": "accessibility",
+                    "details": f"Consider more inclusive language instead of: '{term}'"
+                })
+        
+        return issues
+
+    def _generate_domain_specific_suggestions(self, topic_family: str, issues: List[Dict[str, Any]]) -> List[str]:
+        """Generate domain-specific editing suggestions"""
+        suggestions = ["Please review for grammar and consistency."]
+        
+        domain_suggestions = {
+            "education": [
+                "Ensure content aligns with stated learning objectives",
+                "Verify age-appropriateness for target audience",
+                "Include clear assessment criteria"
+            ],
+            "research": [
+                "Include methodology details",
+                "Add ethical considerations for human subjects",
+                "Specify data collection and analysis methods"
+            ],
+            "healthcare_nonclinical": [
+                "Add appropriate medical disclaimers",
+                "Avoid providing specific medical advice",
+                "Encourage consultation with healthcare professionals"
+            ],
+            "legal_plain": [
+                "Explain concepts without providing legal advice",
+                "Include disclaimers about jurisdictional differences",
+                "Suggest consulting with qualified legal professionals"
+            ],
+            "product": [
+                "Focus on user needs and benefits",
+                "Include measurable success metrics",
+                "Consider technical feasibility and constraints"
+            ],
+            "accessibility": [
+                "Use person-first, inclusive language",
+                "Reference relevant accessibility standards (WCAG)",
+                "Include testing with assistive technologies"
+            ]
+        }
+        
+        if topic_family in domain_suggestions:
+            suggestions.extend(domain_suggestions[topic_family])
+        
+        return suggestions
+    
+    def _check_grammar(self, text: str) -> float:
+        """Placeholder for grammar check."""
+        return 0.9
+
+    def _check_pov_consistency(self, text: str) -> Dict[str, Any]:
+        """Placeholder for POV check."""
+        return {"consistent": True, "dominant_pov": "third_person"}
+
 
     def _log_prompt_audit(self, prompt_payload: Dict[str, Any], response: Dict[str, Any]):
         """Logs outgoing prompts and metadata for auditing."""

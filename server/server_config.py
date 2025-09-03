@@ -80,7 +80,7 @@ class ServerConfig(BaseSettings):
     )
     arango_url: str = Field(default=URLs.arangodb_url(), alias="ARANGO_URL")
     arango_user: str = Field(default=Database.ARANGO_USERNAME, alias="ARANGO_USER")
-    arango_password: str = Field(default="password", alias="ARANGO_PASSWORD")
+    arango_password: str = Field(default="samay2504", alias="ARANGO_PASSWORD")
     arango_database: str = Field(default=Database.ARANGO_DATABASE, alias="ARANGO_DATABASE")
     redis_url: str = Field(default=URLs.redis_url(), alias="REDIS_URL")
 

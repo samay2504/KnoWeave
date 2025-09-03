@@ -101,16 +101,33 @@ class TestPlannerAgent:
     @pytest.mark.asyncio
     async def test_planner_returns_three_branches(self, mock_config):
         """Test that planner returns expected number of branches"""
-        agent = PlannerGeneratorAgent(mock_config)
+        # Mock the LLM provider
+        mock_llm_provider = AsyncMock()
+        mock_llm_response = {
+            "branches": [
+                {"title": "Branch 1", "summary": "Summary 1", "content": "Content 1"},
+                {"title": "Branch 2", "summary": "Summary 2", "content": "Content 2"},
+                {"title": "Branch 3", "summary": "Summary 3", "content": "Content 3"},
+            ]
+        }
+        mock_llm_provider.generate.return_value = mock_llm_response
+
+        agent = PlannerGeneratorAgent(mock_config, llm_provider=mock_llm_provider)
 
         test_workspace = {
             "session_id": "test_session",
             "topic_content": "Detective Sarah walked into the apartment."
         }
         
+        # Create a prompt payload that the new invoke method expects
         test_agent_config = {
-            "text": "Detective Sarah walked into the apartment.",
-            "planning_mode": "suggestions"
+            "prompt_payload": {
+                "prompt": "test prompt",
+                "temperature": 0.5,
+                "max_tokens": 500,
+                "schema": {}
+            },
+            "topic_family": "story"
         }
 
         # Call the actual invoke method with proper workspace dict
@@ -118,13 +135,12 @@ class TestPlannerAgent:
 
         # Check that we get a valid planning output
         assert result is not None
-        # The agent should return some kind of plan or suggestions
-        if isinstance(result, dict):
-            # Could be suggestions, outline, or plan
-            assert len(result) > 0
-        elif hasattr(result, '__dict__'):
-            # If it's an object, check it's not empty
-            assert result is not None
+        assert "branches" in result
+        assert len(result["branches"]) == 3
+        assert result["branches"][0]["title"] == "Branch 1"
+        assert "call_metadata" in result
+        assert result["branches"][0]["meta"]["domain"] == "story"
+
 
 
 class TestGraphManagerAgent:
@@ -173,7 +189,20 @@ class TestVerifierAgent:
     @pytest.mark.asyncio
     async def test_verifier_pov_consistency(self, mock_config):
         """Test POV consistency checking"""
-        agent = VerifierAgent(mock_config)
+        # Mock the LLM provider
+        mock_llm_provider = AsyncMock()
+        mock_llm_response = {
+            "branch_id": "test_branch",
+            "factual_consistency": {"score": 0.9, "issues": []},
+            "grammar_issues": [],
+            "safety_violations": [],
+            "accept_reject": "accept",
+            "suggested_edits": [],
+            "confidence": 0.95
+        }
+        mock_llm_provider.generate.return_value = mock_llm_response
+        
+        agent = VerifierAgent(mock_config, llm_provider=mock_llm_provider)
 
         test_workspace = {
             "session_id": "test_session",
@@ -181,7 +210,12 @@ class TestVerifierAgent:
         }
         
         test_agent_config = {
-            "validation_type": "blueprint"
+            "prompt_payload": {
+                "prompt": "test prompt",
+                "temperature": 0.1,
+                "max_tokens": 300,
+                "schema": {}
+            }
         }
 
         # Call the actual invoke method with proper workspace dict
@@ -189,13 +223,9 @@ class TestVerifierAgent:
 
         # Check that we get a valid verification output
         assert result is not None
-        # The verifier should return some kind of validation results
-        if isinstance(result, dict):
-            # Check if it has validation-like structure
-            assert len(result) >= 0  # At minimum should not error
-        elif hasattr(result, '__dict__'):
-            # If it's an object, check it's not empty
-            assert result is not None
+        assert result["accept_reject"] == "accept"
+        assert result["confidence"] > 0.9
+
 
 
 class TestEvaluatorAgent:

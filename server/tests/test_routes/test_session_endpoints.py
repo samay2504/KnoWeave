@@ -213,6 +213,10 @@ class TestArangoDBIntegration:
     """Test ArangoDB integration with session endpoints."""
 
     @pytest.mark.asyncio
+    @pytest.mark.skipif(
+        True,  # Skip by default since ArangoDB may not be running
+        reason="ArangoDB container must be running for this test"
+    )
     async def test_arangodb_data_persistence(self):
         """Test that session data is properly saved to and retrieved from ArangoDB."""
         # This test verifies that ArangoDB is properly activated and data persistence works

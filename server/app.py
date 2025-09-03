@@ -13,7 +13,7 @@ from typing import Dict, Any, Optional, TYPE_CHECKING
 try:
     from fastapi import FastAPI, HTTPException, Depends, Request
     from fastapi.middleware.cors import CORSMiddleware
-    from fastapi.responses import JSONResponse
+    from fastapi.responses import JSONResponse, Response
     from fastapi.staticfiles import StaticFiles
     from slowapi import Limiter, _rate_limit_exceeded_handler
     from slowapi.util import get_remote_address
@@ -232,6 +232,38 @@ def create_app() -> "FastAPI":
 
     # Include API routes
     app.include_router(api_router)
+
+    # Include authentication routes
+    try:
+        from routes.auth_routes import router as auth_router
+        app.include_router(auth_router)
+        logger.info("Authentication routes loaded successfully")
+    except ImportError as e:
+        logger.warning(f"Could not import auth routes: {e}")
+
+    # Add /api/me endpoint for authentication tests
+    @app.get("/api/me")
+    async def get_current_user(request: Request):
+        """Get current authenticated user."""
+        try:
+            from auth.google_oauth import get_current_user_from_request
+            user = get_current_user_from_request(request)
+            if user:
+                return {"user": user}
+            else:
+                raise HTTPException(status_code=401, detail="Not authenticated")
+        except ImportError:
+            raise HTTPException(status_code=501, detail="Authentication not available")
+
+    @app.post("/auth/logout")
+    async def logout(response: Response):
+        """Logout endpoint."""
+        try:
+            from auth.google_oauth import clear_auth_cookie
+            clear_auth_cookie(response)
+            return {"status": "success", "message": "Logged out successfully"}
+        except ImportError:
+            raise HTTPException(status_code=501, detail="Authentication not available")
 
     @app.post("/api/session/{session_id}/suggestion_signal")
     async def suggestion_signal(session_id: str, request: Request):

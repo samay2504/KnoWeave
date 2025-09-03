@@ -260,8 +260,21 @@ def cleanup_container():
     """Cleanup dependency container"""
     global _container
     if _container:
-        # Note: This is sync cleanup, use with care
-        asyncio.create_task(_container.cleanup())
+        # This is a sync function that needs to run an async cleanup.
+        # It might be called when the pytest-asyncio event loop is already closed.
+        # We get the loop, and if it's not running, we use run_until_complete.
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        if loop and loop.is_running():
+            # If a loop is running, create a task to avoid blocking.
+            loop.create_task(_container.cleanup())
+        else:
+            # If no loop is running, run the cleanup to completion in a new loop.
+            asyncio.run(_container.cleanup())
+        
         _container = None
 
 __all__ = [

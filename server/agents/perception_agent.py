@@ -1,6 +1,6 @@
 """
 Perception Agent - Text analysis and metadata extraction
-Extracts surface features: tokens, POS, NER, coref, SRL, tone, POV, summaries
+Extracts surface features: tokens, POS, NER, coref, SRL, tone
 """
 
 import re
@@ -148,16 +148,69 @@ class PerceptionAgent:
             "angry",
             "terrible",
             "awful",
-            "hate",
-            "horrible",
-            "disgusting",
-            "furious",
-            "devastated",
-            "miserable",
-            "depressed",
-            "anxious",
+            "disappointed",
+            "frustrated",
             "worried",
+            "stressed",
+            "confused",
+            "difficult",
+            "problem",
+            "issue",
+            "challenge",
         }
+
+        # Domain detection patterns
+        self.domain_patterns = {
+            "story": [
+                r"\b(?:story|narrative|character|plot|fiction|novel|tale|write|author|protagonist|antagonist|chapter)\b",
+                r"\b(?:once upon a time|in a land|the hero|the villain|climax|resolution)\b"
+            ],
+            "education": [
+                r"\b(?:lesson|teach|learn|student|curriculum|school|class|grade|semester|assignment)\b",
+                r"\b(?:objective|assessment|quiz|exam|homework|lecture|tutorial|syllabus)\b"
+            ],
+            "research": [
+                r"\b(?:research|study|methodology|analysis|hypothesis|experiment|data|survey|sample)\b",
+                r"\b(?:statistical|significant|correlation|variable|control|treatment|peer.?review)\b"
+            ],
+            "product": [
+                r"\b(?:product|feature|user|customer|business|development|software|app|platform)\b",
+                r"\b(?:requirement|specification|roadmap|backlog|sprint|agile|mvp|kpi)\b"
+            ],
+            "marketing": [
+                r"\b(?:marketing|campaign|audience|brand|promotion|advertising|strategy|engagement)\b",
+                r"\b(?:conversion|funnel|roi|ctr|impression|click|demographic|persona)\b"
+            ],
+            "healthcare_nonclinical": [
+                r"\b(?:health|wellness|fitness|nutrition|stress|mental.?health|exercise|sleep)\b",
+                r"\b(?:lifestyle|wellbeing|mindfulness|meditation|therapy|counseling|support)\b"
+            ],
+            "legal_plain": [
+                r"\b(?:legal|law|rights|contract|policy|compliance|regulation|agreement|terms)\b",
+                r"\b(?:clause|provision|liability|intellectual.?property|privacy|gdpr|copyright)\b"
+            ],
+            "engineering": [
+                r"\b(?:engineering|system|architecture|technical|software|design|infrastructure|scalability)\b",
+                r"\b(?:microservice|api|database|cloud|deployment|ci.?cd|docker|kubernetes)\b"
+            ],
+            "data_science": [
+                r"\b(?:data|analysis|model|prediction|statistics|machine.?learning|analytics|visualization)\b",
+                r"\b(?:algorithm|feature|training|validation|regression|classification|clustering|neural)\b"
+            ],
+            "personal_productivity": [
+                r"\b(?:productivity|time.?management|goals|habits|organization|planning|schedule|efficiency)\b",
+                r"\b(?:task|priority|deadline|calendar|reminder|focus|workflow|optimization)\b"
+            ],
+            "accessibility": [
+                r"\b(?:accessibility|inclusive|disability|usability|universal.?design|wcag|screen.?reader)\b",
+                r"\b(?:alt.?text|keyboard.?navigation|color.?contrast|aria|assistive.?technology)\b"
+            ],
+            "teaching_training": [
+                r"\b(?:training|workshop|skill.?development|professional.?development|coaching|mentoring)\b",
+                r"\b(?:curriculum|pedagogy|andragogy|facilitation|learning.?outcome|competency)\b"
+            ]
+        }
+        
         self.question_words = {"what", "who", "where", "when", "why", "how", "which"}
 
     async def initialize(self) -> bool:
@@ -450,6 +503,9 @@ class PerceptionAgent:
         # Analyze tone and POV
         tone = self._detect_tone(text)
         pov = self._detect_pov(text)
+        
+        # Domain detection
+        domain_info = self.detect_domain_and_role(text)
 
         # Generate summary
         summary = self._generate_summary(sentences)
@@ -466,6 +522,14 @@ class PerceptionAgent:
                 "word_count": len(tokens),
                 "entity_count": len(entities),
                 "analysis_type": "spacy",
+                "topic_family": domain_info.get("topic_family"),
+                "topic_role": domain_info.get("topic_role"),
+                "topic_goal_suggestions": domain_info.get("topic_goal_suggestions"),
+                "domain_confidence": domain_info.get("domain_confidence"),
+                "audience_level": domain_info.get("audience_level"),
+                "constraints": domain_info.get("constraints"),
+                "learning_objectives": domain_info.get("learning_objectives"),
+                "warnings": domain_info.get("warnings", []),
             },
         )
 
@@ -578,6 +642,9 @@ class PerceptionAgent:
         # Pattern-based entity extraction
         entities = self._extract_entities_with_patterns(text)
 
+        # Domain detection
+        domain_info = self.detect_domain_and_role(text)
+
         tone = self._detect_tone(text)
         pov = self._detect_pov(text)
         summary = self._generate_summary(sentences)
@@ -594,6 +661,14 @@ class PerceptionAgent:
                 "word_count": len(tokens),
                 "entity_count": len(entities),
                 "analysis_type": "pattern",
+                "topic_family": domain_info.get("topic_family"),
+                "topic_role": domain_info.get("topic_role"),
+                "topic_goal_suggestions": domain_info.get("topic_goal_suggestions"),
+                "domain_confidence": domain_info.get("domain_confidence"),
+                "audience_level": domain_info.get("audience_level"),
+                "constraints": domain_info.get("constraints"),
+                "learning_objectives": domain_info.get("learning_objectives"),
+                "warnings": domain_info.get("warnings", []),
             },
         )
 
@@ -663,6 +738,163 @@ class PerceptionAgent:
             return "third"
         else:
             return "mixed"
+
+    def detect_domain_and_role(self, text: str) -> Dict[str, Any]:
+        """
+        Detect domain and role from text using pattern matching and heuristics
+        Returns topic_family, topic_role, topic_goal_suggestions, and confidence
+        """
+        text_lower = text.lower()
+        
+        # Calculate domain scores
+        domain_scores = {}
+        
+        for domain, patterns in self.domain_patterns.items():
+            score = 0
+            for pattern in patterns:
+                matches = len(re.findall(pattern, text_lower, re.IGNORECASE))
+                score += matches
+            
+            # Normalize by pattern count to prevent bias toward domains with more patterns
+            domain_scores[domain] = score / len(patterns) if patterns else 0
+        
+        # Find best matching domain
+        if not domain_scores or max(domain_scores.values()) == 0:
+            return {
+                "topic_family": "story",  # Default fallback
+                "topic_role": "user",
+                "topic_goal_suggestions": ["create_content"],
+                "domain_confidence": 0.0
+            }
+        
+        best_domain = max(domain_scores, key=domain_scores.get)
+        confidence = min(domain_scores[best_domain], 1.0)
+        
+        # Domain-specific role and goal mappings
+        domain_mappings = {
+            "story": {
+                "topic_role": "creative_writer",
+                "topic_goal_suggestions": ["story_outline", "character_development", "plot_continuation", "world_building"]
+            },
+            "education": {
+                "topic_role": "educator", 
+                "topic_goal_suggestions": ["lesson_plan", "study_guide", "quiz_creation", "curriculum_design"]
+            },
+            "research": {
+                "topic_role": "researcher",
+                "topic_goal_suggestions": ["experiment_plan", "literature_review", "methodology_design", "data_analysis"]
+            },
+            "product": {
+                "topic_role": "product_manager",
+                "topic_goal_suggestions": ["prd", "feature_spec", "user_story_mapping", "competitive_analysis"]
+            },
+            "marketing": {
+                "topic_role": "marketing_strategist",
+                "topic_goal_suggestions": ["campaign_plan", "content_calendar", "audience_analysis", "messaging_strategy"]
+            },
+            "healthcare_nonclinical": {
+                "topic_role": "health_educator",
+                "topic_goal_suggestions": ["wellness_guide", "stress_management", "fitness_plan", "nutrition_education"]
+            },
+            "legal_plain": {
+                "topic_role": "legal_educator",
+                "topic_goal_suggestions": ["policy_explanation", "rights_summary", "compliance_guide", "contract_review"]
+            },
+            "engineering": {
+                "topic_role": "systems_architect", 
+                "topic_goal_suggestions": ["system_design", "architecture_review", "technical_spec", "infrastructure_plan"]
+            },
+            "data_science": {
+                "topic_role": "data_scientist",
+                "topic_goal_suggestions": ["eda_plan", "model_design", "analysis_framework", "visualization_strategy"]
+            },
+            "personal_productivity": {
+                "topic_role": "productivity_coach",
+                "topic_goal_suggestions": ["study_plan", "habit_tracker", "goal_planning", "time_management"]
+            },
+            "accessibility": {
+                "topic_role": "accessibility_specialist",
+                "topic_goal_suggestions": ["a11y_audit", "wcag_compliance", "inclusive_design", "usability_testing"]
+            },
+            "teaching_training": {
+                "topic_role": "training_designer",
+                "topic_goal_suggestions": ["workshop_design", "skill_assessment", "learning_path", "competency_framework"]
+            }
+        }
+        
+        mapping = domain_mappings.get(best_domain, {
+            "topic_role": "assistant",
+            "topic_goal_suggestions": ["provide_assistance"]
+        })
+        
+        # Detect specific constraints and context from text
+        audience_indicators = {
+            "beginner": ["beginner", "new to", "start", "introduction", "basic"],
+            "intermediate": ["intermediate", "some experience", "familiar with"],
+            "advanced": ["advanced", "expert", "sophisticated", "complex"],
+            "child": ["child", "kid", "elementary", "grade 1", "grade 2", "grade 3"],
+            "teenager": ["teen", "adolescent", "high school", "grade 9", "grade 10"],
+            "adult": ["adult", "professional", "workplace", "office", "corporate"]
+        }
+        
+        audience_level = "general"
+        for level, indicators in audience_indicators.items():
+            if any(indicator in text_lower for indicator in indicators):
+                audience_level = level
+                break
+        
+        # Detect time constraints
+        time_indicators = re.findall(r'\b(\d+)\s*(?:minute|hour|day|week|month)\b', text_lower)
+        constraints = []
+        if time_indicators:
+            constraints.append(f"time_limit: {time_indicators[0]} units")
+        
+        # Detect resource constraints
+        if any(word in text_lower for word in ["limited", "budget", "constraint", "restriction"]):
+            constraints.append("resource_constraints")
+        
+        # Look for learning objectives or goals in educational content
+        learning_objectives = []
+        if best_domain == "education":
+            objective_patterns = [
+                r'objective[s]?:?\s*([^.!?]+)',
+                r'goal[s]?:?\s*([^.!?]+)',
+                r'students?\s+(?:will|should|can)\s+([^.!?]+)',
+                r'learn(?:ing)?\s+(?:to|about)?\s*([^.!?]+)'
+            ]
+            for pattern in objective_patterns:
+                matches = re.findall(pattern, text_lower, re.IGNORECASE)
+                learning_objectives.extend([match.strip() for match in matches[:3]])  # Limit to 3
+        
+        return {
+            "topic_family": best_domain,
+            "topic_role": mapping["topic_role"],
+            "topic_goal_suggestions": mapping["topic_goal_suggestions"],
+            "domain_confidence": confidence,
+            "audience_level": audience_level,
+            "constraints": constraints,
+            "learning_objectives": learning_objectives if learning_objectives else None,
+            "warnings": self._detect_domain_warnings(best_domain, text_lower)
+        }
+    
+    def _detect_domain_warnings(self, domain: str, text_lower: str) -> List[str]:
+        """Detect domain-specific warnings"""
+        warnings = []
+        
+        if domain == "healthcare_nonclinical":
+            medical_terms = ["diagnose", "treatment", "medication", "prescription", "disease", "illness", "symptom"]
+            if any(term in text_lower for term in medical_terms):
+                warnings.append("medical_boundaries_required")
+        
+        if domain == "legal_plain":
+            legal_advice_terms = ["should you", "recommend", "advise", "sue", "lawsuit", "legal action"]
+            if any(term in text_lower for term in legal_advice_terms):
+                warnings.append("legal_advice_boundaries")
+        
+        if any(term in text_lower for term in ["personal", "private", "confidential", "ssn", "social security"]):
+            warnings.append("privacy_sensitive_content")
+        
+        return warnings
 
     def _generate_summary(self, sentences: List[str]) -> str:
         """Generate a simple summary of the text"""
