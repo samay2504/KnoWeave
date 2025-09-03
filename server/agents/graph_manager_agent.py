@@ -31,6 +31,9 @@ class GraphNode:
         self.type = node_type
         self.content = content
         self.metadata = metadata or {}
+        # Ensure domain is part of metadata for new nodes
+        if 'domain' not in self.metadata:
+            self.metadata['domain'] = 'unknown'
         self.created_at = datetime.now().isoformat()
         self.updated_at = self.created_at
         self.connections = set()
@@ -127,44 +130,25 @@ class GraphManagerAgent:
         self.adjacency_list: Dict[str, Set[str]] = defaultdict(set)
         self.reverse_adjacency: Dict[str, Set[str]] = defaultdict(set)
 
-        # Node type hierarchies and relationships
+        # Node type hierarchies and relationships, now extended for multi-domain support
         self.node_types = {
-            "story": [
-                "character",
-                "setting",
-                "event",
-                "theme",
-                "plot_point",
-                "conflict",
-            ],
-            "lesson_plan": [
-                "objective",
-                "activity",
-                "material",
-                "assessment",
-                "concept",
-            ],
-            "study_guide": ["topic", "concept", "example", "exercise", "resource"],
+            "story": ["character", "setting", "event", "theme", "plot_point", "conflict"],
+            "education": ["objective", "activity", "material", "assessment", "concept", "learning_objective"],
+            "research": ["hypothesis", "method_step", "data_source", "finding", "citation"],
+            "product": ["feature", "user_story", "epic", "task", "bug_report", "success_metric"],
+            "marketing": ["campaign_task", "kpi", "target_audience", "channel", "creative_asset"],
+            "engineering": ["component", "service", "dependency", "test_case", "deployment_task"],
+            "generic": ["node", "entity", "event", "concept"] # Fallback types
         }
 
         # Relationship types for different content domains
         self.relation_types = {
             "structural": ["contains", "part_of", "follows", "precedes", "depends_on"],
-            "semantic": [
-                "related_to",
-                "similar_to",
-                "opposite_of",
-                "example_of",
-                "causes",
-            ],
+            "semantic": ["related_to", "similar_to", "opposite_of", "example_of", "causes"],
             "narrative": ["character_in", "setting_for", "conflicts_with", "resolves"],
-            "educational": [
-                "teaches",
-                "requires",
-                "builds_on",
-                "demonstrates",
-                "assesses",
-            ],
+            "educational": ["teaches", "requires", "builds_on", "demonstrates", "assesses"],
+            "product": ["implements", "verifies", "blocked_by"],
+            "generic": ["connects_to"] # Fallback relation
         }
 
         # Graph analysis algorithms
