@@ -6,6 +6,9 @@ Checks for consistency violations and marks unverified facts
 import re
 import logging
 import asyncio
+import json
+from pathlib import Path
+from datetime import datetime
 from typing import Dict, Any, List, Optional, Set, Tuple
 
 from utils.schemas import (
@@ -94,61 +97,97 @@ class VerifierAgent:
     ) -> Dict[str, Any]:
         """
         Blueprint-compliant invoke method for Verifier Agent
-        Validates content quality, consistency, and constraints
+        Validates content quality, consistency, and constraints.
+        Now prompt-driven and supports domain-specific checks.
         """
-        logger.info(
-            f"Verifying content for session {workspace.get('session_id', 'unknown')}"
-        )
+        logger.info(f"Verifying content for session {workspace.get('session_id', 'unknown')}")
 
-        # Get workspace data
+        prompt_payload = agent_config.get("prompt_payload")
+        if not prompt_payload or not self.llm_provider:
+            logger.error("Verifier agent requires a prompt payload and LLM provider.")
+            # Fallback to a basic local check if LLM fails
+            return await self._run_local_verification(workspace)
+
+        try:
+            logger.info("Invoking Verifier Agent with LLM-based verification.")
+            
+            llm_response = await self.llm_provider.generate(
+                prompt=prompt_payload["prompt"],
+                temperature=prompt_payload["temperature"],
+                max_tokens=prompt_payload["max_tokens"],
+                schema=prompt_payload["schema"]
+            )
+
+            # Add call metadata
+            llm_response["call_metadata"] = {
+                "provider": self.llm_provider.provider_name,
+                "model": self.llm_provider.model_name,
+                "prompt_hash": hash(prompt_payload["prompt"]),
+                "timestamp": datetime.utcnow().isoformat()
+            }
+
+            if self.config.get("PROMPT_AUDIT"):
+                self._log_prompt_audit(prompt_payload, llm_response)
+
+            return llm_response
+
+        except Exception as e:
+            logger.error(f"LLM-based verification failed: {e}. Falling back to local verification.")
+            return await self._run_local_verification(workspace)
+
+    async def _run_local_verification(self, workspace: Dict[str, Any]) -> Dict[str, Any]:
+        """A local, non-LLM fallback for basic verification."""
         topic_content = workspace.get("topic_content", "")
-        perception_data = workspace.get("perception_analysis", {})
-        planning_data = workspace.get("planner_analysis", {})
-        graph_data = workspace.get("graph_analysis", {})
+        # This is a simplified version of the original logic
+        grammar_score = self._check_grammar(topic_content)
+        pov_consistency = self._check_pov_consistency(topic_content)
+        
+        issues = []
+        if grammar_score < 0.8:
+            issues.append({"type": "grammar", "details": "Low grammar score."})
+        if not pov_consistency["consistent"]:
+            issues.append({"type": "pov", "details": f"Inconsistent POV: {pov_consistency['dominant_pov']}"})
 
-        # Configure validation based on agent config
-        self._configure_validation_blueprint(agent_config, workspace)
-
-        # Run comprehensive validation
-        validation_results = await self._run_blueprint_validation_suite(
-            topic_content, perception_data, planning_data, graph_data
-        )
-
-        # Calculate overall quality score
-        quality_assessment = await self._assess_blueprint_quality(validation_results)
-
-        # Generate improvement suggestions
-        improvement_suggestions = await self._generate_blueprint_suggestions(
-            validation_results, workspace
-        )
-
-        # Create validation report
-        validation_report = await self._create_blueprint_report(
-            validation_results, quality_assessment, improvement_suggestions
-        )
-
-        result = {
-            "validation_results": validation_results,
-            "quality_assessment": quality_assessment,
-            "improvement_suggestions": improvement_suggestions,
-            "validation_report": validation_report,
-            "metadata": {
-                "checks_performed": len(validation_results),
-                "passed_checks": len(
-                    [r for r in validation_results if r.get("passed", False)]
-                ),
-                "failed_checks": len(
-                    [r for r in validation_results if not r.get("passed", True)]
-                ),
-                "timestamp": "2024-01-01T00:00:00Z",  # Would use datetime.now().isoformat()
-            },
+        return {
+            "branch_id": workspace.get("current_branch_id", "unknown"),
+            "factual_consistency": {"score": 0.5, "issues": ["Local fallback cannot verify facts."]},
+            "grammar_issues": [i for i in issues if i["type"] == "grammar"],
+            "safety_violations": [],
+            "accept_reject": "needs_revision" if issues else "accept",
+            "suggested_edits": ["Please review for grammar and consistency."],
+            "confidence": 0.5,
+            "call_metadata": {
+                "provider": "local",
+                "model": "pattern_based_fallback",
+                "timestamp": datetime.utcnow().isoformat(),
+                "error": "LLM provider failed, using local verifier."
+            }
         }
 
-        logger.debug(
-            f"Blueprint verification complete - {len(validation_results)} checks, "
-            f"{quality_assessment.get('overall_score', 0.0):.2f} quality score"
-        )
-        return result
+    def _log_prompt_audit(self, prompt_payload: Dict[str, Any], response: Dict[str, Any]):
+        """Logs outgoing prompts and metadata for auditing."""
+        try:
+            ts = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+            log_path = Path(self.config.get("audit_log_dir", "internal_checks"))
+            log_path.mkdir(exist_ok=True)
+            log_file = log_path / f"llm_prompts_{ts}.ndjson"
+            
+            audit_record = {
+                "timestamp": datetime.utcnow().isoformat(),
+                "agent": "verifier",
+                "prompt_hash": hash(prompt_payload.get("prompt", "")),
+                "metadata": prompt_payload.get("metadata", {}),
+                "response_summary": {
+                    "accept_reject": response.get("accept_reject"),
+                    "confidence": response.get("confidence"),
+                    "issues_found": len(response.get("grammar_issues", [])) + len(response.get("factual_consistency", {}).get("issues", []))
+                }
+            }
+            
+            with open(log_file, "a", encoding="utf-8") as f:
+                f.write(json.dumps(audit_record) + "\n")
+        except Exception as e:
+            logger.error(f"Failed to write to prompt audit log: {e}")
 
     def _configure_validation_blueprint(
         self, agent_config: Dict[str, Any], workspace: Dict[str, Any]
