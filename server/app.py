@@ -233,6 +233,34 @@ def create_app() -> "FastAPI":
     # Include API routes
     app.include_router(api_router)
 
+    @app.post("/api/session/{session_id}/suggestion_signal")
+    async def suggestion_signal(session_id: str, request: Request):
+        """Receives signals from the frontend to trigger suggestions."""
+        try:
+            if not session_manager:
+                raise HTTPException(status_code=500, detail="Session manager not initialized")
+
+            signal_data = await request.json()
+            trigger_type = signal_data.get("type") # "on_demand", "idle_smart", "proactive"
+            
+            # The orchestrator (session_manager) decides whether to run the suggestion pipeline
+            should_suggest, reason = await session_manager.handle_suggestion_trigger(session_id, trigger_type, signal_data)
+
+            if should_suggest:
+                # This would trigger the suggestion pipeline asynchronously
+                # For this implementation, we'll just log it.
+                logger.info(f"Suggestion triggered for session {session_id} due to {reason}")
+                # In a real implementation, you would call a background task here
+                # to run the full suggestion pipeline (perception -> planner -> etc.)
+                # and then push the results to the client via websockets.
+                return {"status": "suggestion_triggered", "reason": reason}
+            else:
+                return {"status": "suggestion_skipped", "reason": reason}
+
+        except Exception as e:
+            logger.error(f"Error handling suggestion signal: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+
     # Session endpoints
     @app.post("/api/session/new", response_model=SessionResponse)
     async def create_new_session(request: NewSessionRequest):
