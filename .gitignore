@@ -148,6 +148,7 @@ dmypy.json
 
 # Custom
 data/
+data/backups/
 *.log
 .vscode/
 *.db
