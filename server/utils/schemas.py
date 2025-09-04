@@ -194,7 +194,7 @@ class WorkspaceSchema(BaseSchema):
     kb_triples: List[List[str]] = Field(
         default_factory=list, description="Knowledge base triples"
     )
-    projections: Dict[str, ProjectionSchema] = Field(
+    projections: Dict[str, Optional[ProjectionSchema]] = Field(
         default_factory=dict, description="Generated projections"
     )
     history: List[Dict[str, Any]] = Field(
@@ -274,7 +274,7 @@ class SuggestionsResponse(BaseSchema):
     """Response containing generated suggestions"""
 
     session_id: str = Field(..., description="Session identifier")
-    projections: Dict[str, ProjectionSchema] = Field(
+    projections: Dict[str, Optional[ProjectionSchema]] = Field(
         ..., description="Generated projections"
     )
     metadata: Dict[str, Any] = Field(
@@ -287,7 +287,7 @@ class BacktrackResponse(BaseSchema):
     """Response for backtrack operation"""
 
     session_id: str = Field(..., description="Session identifier")
-    new_projections: Dict[str, ProjectionSchema] = Field(
+    new_projections: Dict[str, Optional[ProjectionSchema]] = Field(
         default_factory=dict, description="New projections after backtrack"
     )
     reverted_to: str = Field(..., description="Node that was reverted to")

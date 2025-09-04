@@ -1223,6 +1223,248 @@ class SessionManager:
         self.session_cooldowns.clear()
         logger.info("Session Manager cleanup completed")
 
+    # ===== PRODUCTION-GRADE SESSION API =====
+    # These methods provide a complete session management interface
+    # that integrates with the workspace system and maintains blueprint compliance
+
+    async def create_session(self, request: NewSessionRequest) -> WorkspaceSchema:
+        """
+        Create a new session with full workspace integration
+        
+        This is a production-grade method that:
+        1. Creates a proper session ID
+        2. Initializes a workspace with the workspace manager
+        3. Sets up session tracking and policies
+        4. Returns a complete WorkspaceSchema for API consistency
+        """
+        try:
+            # Generate unique session ID
+            import uuid
+            session_id = f"session_{uuid.uuid4().hex[:12]}"
+            
+            # Import required schemas
+            from utils.schemas import ProjectionSchema, MetadataSchema, PolicySchema
+            
+            # Create properly structured workspace data
+            workspace_data = {
+                "session_id": session_id,
+                "user_id": request.user_id,
+                "topic": request.topic,
+                "topic_descriptor": getattr(request, 'topic_descriptor', ''),
+                "topic_content": getattr(request, 'initial_content', ''),
+                "events": [],
+                "characters": {},
+                "kb_triples": [],
+                "projections": {},  # Empty dict for now, will be populated with ProjectionSchema objects later
+                "history": [],
+                "graph": {"nodes": [], "edges": []},
+                "policy": PolicySchema(**(request.policy or {})),
+                "metadata": MetadataSchema(),  # Empty metadata following schema
+                "created_at": datetime.utcnow(),
+                "last_modified": datetime.utcnow()
+            }
+            
+            # Create WorkspaceSchema object
+            workspace_schema = WorkspaceSchema(**workspace_data)
+            
+            # Initialize workspace through workspace manager if available
+            try:
+                from server.workspace import WorkspaceManager
+                workspace_manager = WorkspaceManager(self.config)
+                workspace = await workspace_manager.get_workspace(session_id)
+                
+                # Update workspace with schema data
+                workspace.update(workspace_schema.model_dump())
+                
+                # Save workspace to persistent storage
+                await workspace.save(force=True)
+                
+                # Track session in session manager
+                self.active_sessions[session_id] = {
+                    "workspace": workspace,
+                    "created_at": datetime.utcnow(),
+                    "last_activity": datetime.utcnow(),
+                    "policy": workspace_schema.policy
+                }
+                
+            except Exception as workspace_error:
+                logger.warning(f"Workspace manager initialization failed: {workspace_error}")
+                # Fall back to storing workspace schema data directly
+                self.active_sessions[session_id] = {
+                    "workspace_data": workspace_schema,  # Store schema directly as fallback
+                    "workspace": None,
+                    "created_at": datetime.utcnow(),
+                    "last_activity": datetime.utcnow(),
+                    "policy": workspace_schema.policy
+                }
+            
+            logger.info(f"Created session {session_id} for user {request.user_id}")
+            
+            # Return the properly structured WorkspaceSchema
+            return workspace_schema
+            
+        except Exception as e:
+            logger.error(f"Failed to create session: {e}")
+            raise Exception(f"Session creation failed: {str(e)}")
+
+    async def load_workspace(self, session_id: str) -> Optional[WorkspaceSchema]:
+        """
+        Load workspace for a session (backward compatibility method)
+        
+        This maintains API compatibility while using the workspace system
+        """
+        try:
+            # Check if session is already active
+            if session_id in self.active_sessions:
+                workspace = self.active_sessions[session_id]["workspace"]
+                if workspace is None:
+                    # Check if we have fallback workspace data
+                    workspace_data = self.active_sessions[session_id].get("workspace_data")
+                    if workspace_data:
+                        logger.info(f"Using fallback workspace data for session {session_id}")
+                        return workspace_data
+                    logger.error(f"Session {session_id} exists but workspace is None and no fallback data")
+                    return None
+                return workspace.to_schema()
+            
+            # Load from workspace manager
+            from server.workspace import WorkspaceManager
+            workspace_manager = WorkspaceManager(self.config)
+            workspace = await workspace_manager.get_workspace(session_id)
+            
+            if workspace is None:
+                logger.error(f"Workspace {session_id} not found in workspace manager")
+                return None
+            
+            # Track in active sessions
+            self.active_sessions[session_id] = {
+                "workspace": workspace,
+                "created_at": datetime.utcnow(),
+                "last_activity": datetime.utcnow(),
+                "policy": workspace.get_policy()
+            }
+            
+            return workspace.to_schema()
+            
+        except Exception as e:
+            logger.error(f"Failed to load workspace {session_id}: {e}")
+            return None
+
+    async def save_projections(self, session_id: str, projections: Dict[str, Any]) -> bool:
+        """
+        Save projections to a session workspace
+        
+        Args:
+            session_id: Session identifier
+            projections: Dictionary of projections to save
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            # Load the workspace
+            workspace = await self.load_workspace(session_id)
+            if not workspace:
+                logger.error(f"Cannot save projections: Session {session_id} not found")
+                return False
+            
+            # Update the session's active workspace if available
+            if session_id in self.active_sessions:
+                active_workspace = self.active_sessions[session_id]["workspace"]
+                if active_workspace:
+                    # Update workspace projections
+                    current_projections = active_workspace.data.get("projections", {})
+                    current_projections.update(projections)
+                    active_workspace.update({"projections": current_projections})
+                    
+                    # Save the updated workspace
+                    await active_workspace.save(force=True)
+                    
+                    logger.info(f"Saved projections to session {session_id}")
+                    return True
+            
+            logger.warning(f"Active workspace not found for session {session_id}")
+            return False
+            
+        except Exception as e:
+            logger.error(f"Failed to save projections for session {session_id}: {e}")
+            return False
+
+    async def get_session(self, session_id: str) -> Optional[WorkspaceSchema]:
+        """
+        Get session workspace (alias for load_workspace for API consistency)
+        """
+        return await self.load_workspace(session_id)
+
+    async def update_session(self, session_id: str, updates: Dict[str, Any]) -> bool:
+        """
+        Update session workspace with new data
+        
+        Production-grade update method that:
+        1. Validates session exists
+        2. Updates workspace data
+        3. Maintains session tracking
+        4. Persists changes
+        """
+        try:
+            if session_id not in self.active_sessions:
+                # Try to load the session first
+                if not await self.load_workspace(session_id):
+                    return False
+            
+            workspace = self.active_sessions[session_id]["workspace"]
+            
+            # Update workspace data
+            workspace.update(updates)
+            
+            # Update session tracking
+            self.active_sessions[session_id]["last_activity"] = datetime.utcnow()
+            
+            # Save to persistent storage
+            await workspace.save()
+            
+            logger.debug(f"Updated session {session_id}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to update session {session_id}: {e}")
+            return False
+
+    async def delete_session(self, session_id: str) -> bool:
+        """
+        Delete a session and cleanup all resources
+        
+        Production-grade cleanup that ensures no resource leaks
+        """
+        try:
+            # Remove from active sessions
+            if session_id in self.active_sessions:
+                workspace = self.active_sessions[session_id]["workspace"]
+                await workspace.cleanup()
+                del self.active_sessions[session_id]
+            
+            # Remove from cooldowns
+            if session_id in self.session_cooldowns:
+                del self.session_cooldowns[session_id]
+                
+            logger.info(f"Deleted session {session_id}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to delete session {session_id}: {e}")
+            return False
+
+    def get_session_stats(self) -> Dict[str, Any]:
+        """Get comprehensive session statistics for monitoring"""
+        return {
+            "active_sessions": len(self.active_sessions),
+            "session_ids": list(self.active_sessions.keys()),
+            "total_cooldowns": len(self.session_cooldowns),
+            "timestamp": datetime.utcnow().isoformat()
+        }
+
+    # ===== END PRODUCTION-GRADE SESSION API =====
+
     async def invoke(
         self, workspace: Dict[str, Any], agent_config: Dict[str, Any]
     ) -> Dict[str, Any]:
@@ -1421,6 +1663,82 @@ class SessionManager:
             lines.append(f"- {instruction}")
 
         return "\n".join(lines)
+
+    async def handle_suggestion_trigger(self, session_id: str, trigger_type: str, signal_data: Dict[str, Any]) -> Tuple[bool, str]:
+        """
+        Handle suggestion trigger from frontend
+        
+        Args:
+            session_id: Session identifier  
+            trigger_type: Type of trigger ('user_button', 'idle_timeout', 'auto')
+            signal_data: Additional data from the trigger
+            
+        Returns:
+            Tuple of (should_suggest: bool, reason: str)
+        """
+        try:
+            # Load session workspace
+            workspace = await self.load_workspace(session_id)
+            if not workspace:
+                return False, f"Session {session_id} not found"
+            
+            # Check session policy for suggestion mode
+            if hasattr(workspace, 'policy') and workspace.policy:
+                if hasattr(workspace.policy, 'suggestion_mode'):
+                    suggestion_mode = workspace.policy.suggestion_mode
+                    cooldown_seconds = getattr(workspace.policy, 'cooldown_seconds', 300)
+                else:
+                    # Policy is a dict
+                    suggestion_mode = workspace.policy.get('suggestion_mode', 'on_demand')
+                    cooldown_seconds = workspace.policy.get('cooldown_seconds', 300)
+            else:
+                suggestion_mode = self.default_policy.get('suggestion_mode', 'on_demand')
+                cooldown_seconds = self.default_policy.get('cooldown_seconds', 300)
+            
+            # Check cooldown
+            if session_id in self.session_cooldowns:
+                last_suggestion = self.session_cooldowns[session_id]
+                time_since_last = (datetime.utcnow() - last_suggestion).total_seconds()
+                
+                if time_since_last < cooldown_seconds:
+                    return False, f"Cooldown active ({int(cooldown_seconds - time_since_last)}s remaining)"
+            
+            # Determine if we should suggest based on trigger type and policy
+            should_suggest = False
+            reason = ""
+            
+            if trigger_type == "user_button":
+                # User explicitly requested suggestion
+                should_suggest = True
+                reason = "User button pressed"
+                
+            elif trigger_type == "idle_timeout" and suggestion_mode in ["idle_smart", "proactive"]:
+                # Check if user has been idle and has content that might benefit from suggestions
+                content_length = len(signal_data.get('topic_content', ''))
+                if content_length > 50:  # Only suggest if there's substantial content
+                    should_suggest = True
+                    reason = "Idle timeout with substantial content"
+                else:
+                    reason = "Idle timeout but insufficient content"
+                    
+            elif trigger_type == "auto" and suggestion_mode == "proactive":
+                # Proactive suggestions based on content analysis
+                should_suggest = True
+                reason = "Proactive suggestion mode enabled"
+                
+            else:
+                reason = f"Suggestion mode '{suggestion_mode}' doesn't support '{trigger_type}' triggers"
+            
+            # Update cooldown if suggesting
+            if should_suggest:
+                self.session_cooldowns[session_id] = datetime.utcnow()
+                logger.info(f"Suggestion triggered for session {session_id}: {reason}")
+            
+            return should_suggest, reason
+            
+        except Exception as e:
+            logger.error(f"Error handling suggestion trigger for session {session_id}: {e}")
+            return False, f"Error: {str(e)}"
 
 
 class SessionAPIManager:
@@ -1636,6 +1954,74 @@ class SessionAPIManager:
             len(workspace.topic_content) for workspace in self.active_sessions.values()
         )
         return total_length / len(self.active_sessions)
+
+    async def handle_suggestion_trigger(self, session_id: str, trigger_type: str, signal_data: Dict[str, Any]) -> Tuple[bool, str]:
+        """
+        Handle suggestion trigger from frontend
+        
+        Args:
+            session_id: Session identifier
+            trigger_type: Type of trigger ('user_button', 'idle_timeout', 'auto')
+            signal_data: Additional data from the trigger
+            
+        Returns:
+            Tuple of (should_suggest: bool, reason: str)
+        """
+        try:
+            # Load session workspace
+            workspace = await self.load_workspace(session_id)
+            if not workspace:
+                return False, f"Session {session_id} not found"
+            
+            # Check session policy for suggestion mode
+            policy = workspace.policy if hasattr(workspace, 'policy') else {}
+            suggestion_mode = policy.get('suggestion_mode', 'on_demand')
+            
+            # Check cooldown
+            if session_id in self.session_cooldowns:
+                last_suggestion = self.session_cooldowns[session_id]
+                cooldown_seconds = policy.get('cooldown_seconds', 300)  # 5 minutes default
+                time_since_last = (datetime.utcnow() - last_suggestion).total_seconds()
+                
+                if time_since_last < cooldown_seconds:
+                    return False, f"Cooldown active ({int(cooldown_seconds - time_since_last)}s remaining)"
+            
+            # Determine if we should suggest based on trigger type and policy
+            should_suggest = False
+            reason = ""
+            
+            if trigger_type == "user_button":
+                # User explicitly requested suggestion
+                should_suggest = True
+                reason = "User button pressed"
+                
+            elif trigger_type == "idle_timeout" and suggestion_mode in ["idle_smart", "proactive"]:
+                # Check if user has been idle and has content that might benefit from suggestions
+                content_length = len(signal_data.get('topic_content', ''))
+                if content_length > 50:  # Only suggest if there's substantial content
+                    should_suggest = True
+                    reason = "Idle timeout with substantial content"
+                else:
+                    reason = "Idle timeout but insufficient content"
+                    
+            elif trigger_type == "auto" and suggestion_mode == "proactive":
+                # Proactive suggestions based on content analysis
+                should_suggest = True
+                reason = "Proactive suggestion mode enabled"
+                
+            else:
+                reason = f"Suggestion mode '{suggestion_mode}' doesn't support '{trigger_type}' triggers"
+            
+            # Update cooldown if suggesting
+            if should_suggest:
+                self.session_cooldowns[session_id] = datetime.utcnow()
+                logger.info(f"Suggestion triggered for session {session_id}: {reason}")
+            
+            return should_suggest, reason
+            
+        except Exception as e:
+            logger.error(f"Error handling suggestion trigger for session {session_id}: {e}")
+            return False, f"Error: {str(e)}"
 
 
 async def create_session_manager(config: Dict[str, Any]) -> SessionManager:

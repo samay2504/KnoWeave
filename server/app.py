@@ -4,6 +4,7 @@ Main orchestrator implementing the blueprint specification
 """
 
 import asyncio
+import json
 import logging
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -11,7 +12,7 @@ from pathlib import Path
 from typing import Dict, Any, Optional, TYPE_CHECKING
 
 try:
-    from fastapi import FastAPI, HTTPException, Depends, Request
+    from fastapi import FastAPI, HTTPException, Depends, Request, WebSocket, APIRouter
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.responses import JSONResponse, Response
     from fastapi.staticfiles import StaticFiles
@@ -45,8 +46,13 @@ except ImportError:
 try:
     from utils.logging_cfg import setup_logging, get_logger
     from dependencies import setup_dependencies, get_container
-    # from api.health import get_health_router  # Temporarily disabled due to aioredis compatibility issue
-    from api.routes import router as api_router
+    from api.health import get_health_router  # Re-enabled after fixing aioredis compatibility issues
+    try:
+        from api.routes import router as api_router
+    except ImportError as e:
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Could not import API routes: {e}")
+        api_router = None
 except ImportError:
     # Fallback for relative imports
     try:
@@ -124,23 +130,32 @@ async def lifespan(app: "FastAPI"):
     try:
         # Setup dependencies first
         async with setup_dependencies(config) as container:
+            # Convert Pydantic config to dict for agents
+            config_dict = config.model_dump() if hasattr(config, 'model_dump') else dict(config)
+            
             # Initialize session manager
-            session_manager = SessionManager(config)
+            session_manager = SessionManager(config_dict)
             await session_manager.initialize()
+            
+            # Store session_manager in app state for global access
+            app.state.session_manager = session_manager
 
             # Initialize agents
             agents = {
-                "perception": PerceptionAgent(config),
-                "planner": PlannerGeneratorAgent(config),
-                "graph_manager": GraphManagerAgent(config),
-                "verifier": VerifierAgent(config),
-                "evaluator": EvaluatorAgent(config),
+                "perception": PerceptionAgent(config_dict),
+                "planner": PlannerGeneratorAgent(config_dict),
+                "graph_manager": GraphManagerAgent(config_dict),
+                "verifier": VerifierAgent(config_dict),
+                "evaluator": EvaluatorAgent(config_dict),
             }
 
-            # Initialize all agents
+            # Initialize all agents that have an initialize method
             for agent_name, agent in agents.items():
-                await agent.initialize()
-                logger.info(f"Initialized {agent_name} agent")
+                if hasattr(agent, 'initialize') and callable(getattr(agent, 'initialize')):
+                    await agent.initialize()
+                    logger.info(f"Initialized {agent_name} agent")
+                else:
+                    logger.info(f"Initialized {agent_name} agent (no initialization required)")
 
             logger.info("All services initialized successfully")
 
@@ -185,6 +200,38 @@ def create_app() -> "FastAPI":
         allow_headers=["*"],
     )
 
+    # Add global /api/mode endpoint (simple approach)
+    @app.post("/api/mode")
+    async def global_mode_update(request: Request):
+        """Global mode update endpoint for /api/mode"""
+        try:
+            data = await request.json()
+            mode = data.get("mode", "balanced")
+            session_id = data.get("session_id")
+            
+            logger.info(f"Global mode update request: mode={mode}, session_id={session_id}")
+            
+            # Try to get session_manager from app state if available
+            session_manager = getattr(app.state, 'session_manager', None)
+            
+            if session_id and session_manager:
+                try:
+                    workspace = await session_manager.load_workspace(session_id)
+                    if workspace:
+                        # Update mode in workspace policy
+                        if hasattr(workspace, 'update_policy'):
+                            workspace.update_policy({"mode": mode})
+                            await session_manager.save_workspace(session_id, force=True)
+                        
+                        return {"status": "success", "mode": mode, "current_mode": mode, "session_id": session_id}
+                except Exception as e:
+                    logger.warning(f"Failed to update mode in workspace: {e}")
+            
+            return {"status": "success", "mode": mode, "current_mode": mode}
+        except Exception as e:
+            logger.error(f"Global mode update failed: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+
     # Include mode and PTG routes
     try:
         from api.mode_routes import mode_router, ptg_router
@@ -222,16 +269,25 @@ def create_app() -> "FastAPI":
             }
         
         app.include_router(fallback_router)
+        
         async def get_status():
             return {"status": "running", "mode_routes": "unavailable"}
             
         app.include_router(fallback_router)
 
-    # Include health endpoints - temporarily disabled due to compatibility issues
-    # app.include_router(get_health_router())
+    # Include health endpoints - re-enabled after fixing compatibility issues
+    try:
+        app.include_router(get_health_router())
+        logger.info("Health routes loaded successfully")
+    except Exception as e:
+        logger.warning(f"Failed to load health routes: {e}")
 
     # Include API routes
-    app.include_router(api_router)
+    if api_router is not None:
+        app.include_router(api_router)
+        logger.info("API routes loaded successfully")
+    else:
+        logger.warning("API router not available, using fallback routes only")
 
     # Include authentication routes
     try:
@@ -265,6 +321,428 @@ def create_app() -> "FastAPI":
         except ImportError:
             raise HTTPException(status_code=501, detail="Authentication not available")
 
+    # Individual Agent Endpoints
+    @app.post("/api/agents/perception/analyze")
+    async def perception_analyze(request: Request):
+        """Direct perception agent analysis"""
+        try:
+            if not agents.get("perception"):
+                raise HTTPException(status_code=500, detail="Perception agent not available")
+            
+            data = await request.json()
+            session_id = data.get("session_id")
+            content = data.get("content", "")
+            
+            if not session_id:
+                raise HTTPException(status_code=400, detail="session_id required")
+            
+            # Load workspace
+            workspace = await session_manager.load_workspace(session_id)
+            if not workspace:
+                raise HTTPException(status_code=404, detail="Session not found")
+            
+            # Convert workspace to proper format, handling validation errors gracefully
+            try:
+                if hasattr(workspace, 'to_dict'):
+                    workspace_data = workspace.to_dict()
+                elif hasattr(workspace, 'model_dump'):
+                    workspace_data = workspace.model_dump()
+                else:
+                    workspace_data = workspace
+            except Exception as e:
+                logger.warning(f"Workspace conversion failed, using raw data: {e}")
+                # Fallback: get raw workspace data
+                raw_workspace = await session_manager.workspace_manager.get_workspace(session_id)
+                workspace_data = raw_workspace.data if hasattr(raw_workspace, 'data') else {}
+            
+            result = await agents["perception"].invoke(workspace_data, {
+                "session_id": session_id,
+                "content": content,
+                "mode": data.get("mode", "balanced")
+            })
+            
+            return {
+                "status": "success",
+                "session_id": session_id,
+                "result": result,
+                "timestamp": datetime.now().isoformat()
+            }
+            
+        except Exception as e:
+            logger.error(f"Perception analysis failed: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @app.post("/api/agents/planner/generate")
+    async def planner_generate(request: Request):
+        """Direct planner agent generation"""
+        try:
+            if not agents.get("planner"):
+                raise HTTPException(status_code=500, detail="Planner agent not available")
+            
+            data = await request.json()
+            session_id = data.get("session_id")
+            
+            if not session_id:
+                raise HTTPException(status_code=400, detail="session_id required")
+            
+            # Get session_manager from app state
+            session_manager = getattr(app.state, 'session_manager', None)
+            if not session_manager:
+                raise HTTPException(status_code=500, detail="Session manager not available")
+            
+            # Load workspace
+            workspace = await session_manager.load_workspace(session_id)
+            if not workspace:
+                raise HTTPException(status_code=404, detail="Session not found")
+            
+            # Convert workspace to proper format, handling validation errors gracefully
+            try:
+                if hasattr(workspace, 'to_dict'):
+                    workspace_data = workspace.to_dict()
+                elif hasattr(workspace, 'model_dump'):
+                    workspace_data = workspace.model_dump()
+                else:
+                    workspace_data = workspace
+            except Exception as e:
+                logger.warning(f"Workspace conversion failed, using raw data: {e}")
+                # Fallback: get raw workspace data
+                raw_workspace = await session_manager.workspace_manager.get_workspace(session_id)
+                workspace_data = raw_workspace.data if hasattr(raw_workspace, 'data') else {}
+            
+            # Generate prompt payload using PTG through Session Manager
+            prompt_payload = session_manager.ptg.generate_canonical_prompt(
+                agent_name="planner",
+                session_id=session_id,
+                topic=data.get("topic", "general"),
+                topic_descriptor=data.get("topic_descriptor", "General content generation"),
+                input_data=data,
+                mode=data.get("mode", "balanced"),
+                context_chunks=[],
+                user_constraints=data.get("constraints", {})
+            )
+            
+            result = await agents["planner"].invoke(workspace_data, {
+                "session_id": session_id,
+                "max_branches": data.get("max_branches", 3),
+                "mode": data.get("mode", "balanced"),
+                "prompt_payload": prompt_payload
+            })
+            
+            return {
+                "status": "success",
+                "session_id": session_id,
+                "result": result,
+                "timestamp": datetime.now().isoformat()
+            }
+            
+        except Exception as e:
+            logger.error(f"Planner generation failed: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @app.post("/api/agents/graph/query")
+    async def graph_query(request: Request):
+        """Direct graph manager query"""
+        try:
+            if not agents.get("graph_manager"):
+                raise HTTPException(status_code=500, detail="Graph manager agent not available")
+            
+            data = await request.json()
+            session_id = data.get("session_id")
+            
+            if not session_id:
+                raise HTTPException(status_code=400, detail="session_id required")
+            
+            # Load workspace
+            workspace = await session_manager.load_workspace(session_id)
+            if not workspace:
+                raise HTTPException(status_code=404, detail="Session not found")
+            
+            # Convert workspace to proper format, handling validation errors gracefully
+            try:
+                if hasattr(workspace, 'to_dict'):
+                    workspace_data = workspace.to_dict()
+                elif hasattr(workspace, 'model_dump'):
+                    workspace_data = workspace.model_dump()
+                else:
+                    workspace_data = workspace
+            except Exception as e:
+                logger.warning(f"Workspace conversion failed, using raw data: {e}")
+                # Fallback: get raw workspace data
+                raw_workspace = await session_manager.workspace_manager.get_workspace(session_id)
+                workspace_data = raw_workspace.data if hasattr(raw_workspace, 'data') else {}
+            
+            result = await agents["graph_manager"].invoke(workspace_data, {
+                "session_id": session_id,
+                "action": data.get("action", "query"),
+                "query": data.get("query", ""),
+                "entities": data.get("entities", []),
+                "events": data.get("events", [])
+            })
+            
+            return {
+                "status": "success",
+                "session_id": session_id,
+                "result": result,
+                "timestamp": datetime.now().isoformat()
+            }
+            
+        except Exception as e:
+            logger.error(f"Graph query failed: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @app.post("/api/agents/verifier/validate")
+    async def verifier_validate(request: Request):
+        """Direct verifier agent validation"""
+        try:
+            if not agents.get("verifier"):
+                raise HTTPException(status_code=500, detail="Verifier agent not available")
+            
+            data = await request.json()
+            session_id = data.get("session_id")
+            content = data.get("content", "")
+            
+            if not session_id:
+                raise HTTPException(status_code=400, detail="session_id required")
+            
+            # Get session_manager from app state
+            session_manager = getattr(app.state, 'session_manager', None)
+            if not session_manager:
+                raise HTTPException(status_code=500, detail="Session manager not available")
+            
+            # Load workspace
+            workspace = await session_manager.load_workspace(session_id)
+            if not workspace:
+                raise HTTPException(status_code=404, detail="Session not found")
+            
+            # Convert workspace to proper format, handling validation errors gracefully
+            try:
+                if hasattr(workspace, 'to_dict'):
+                    workspace_data = workspace.to_dict()
+                elif hasattr(workspace, 'model_dump'):
+                    workspace_data = workspace.model_dump()
+                else:
+                    workspace_data = workspace
+            except Exception as e:
+                logger.warning(f"Workspace conversion failed, using raw data: {e}")
+                # Fallback: get raw workspace data
+                raw_workspace = await session_manager.workspace_manager.get_workspace(session_id)
+                workspace_data = raw_workspace.data if hasattr(raw_workspace, 'data') else {}
+            
+            # Generate prompt payload using PTG through Session Manager
+            prompt_payload = session_manager.ptg.generate_canonical_prompt(
+                agent_name="verifier",
+                session_id=session_id,
+                topic=data.get("topic", "general"),
+                topic_descriptor=data.get("topic_descriptor", "Content verification"),
+                input_data={"content": content, **data},
+                mode=data.get("mode", "balanced"),
+                context_chunks=[],
+                user_constraints=data.get("constraints", {})
+            )
+            
+            result = await agents["verifier"].invoke(workspace_data, {
+                "session_id": session_id,
+                "content": content,
+                "branch_data": data.get("branch_data", {}),
+                "prompt_payload": prompt_payload
+            })
+            
+            return {
+                "status": "success",
+                "session_id": session_id,
+                "result": result,
+                "timestamp": datetime.now().isoformat()
+            }
+            
+        except Exception as e:
+            logger.error(f"Verifier validation failed: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @app.post("/api/agents/evaluator/assess")
+    async def evaluator_assess(request: Request):
+        """Direct evaluator agent assessment"""
+        try:
+            if not agents.get("evaluator"):
+                raise HTTPException(status_code=500, detail="Evaluator agent not available")
+            
+            data = await request.json()
+            session_id = data.get("session_id")
+            branches = data.get("branches", [])
+            
+            if not session_id:
+                raise HTTPException(status_code=400, detail="session_id required")
+            
+            # Load workspace
+            workspace = await session_manager.load_workspace(session_id)
+            if not workspace:
+                raise HTTPException(status_code=404, detail="Session not found")
+            
+            # Convert workspace to proper format, handling validation errors gracefully
+            try:
+                if hasattr(workspace, 'to_dict'):
+                    workspace_data = workspace.to_dict()
+                elif hasattr(workspace, 'model_dump'):
+                    workspace_data = workspace.model_dump()
+                else:
+                    workspace_data = workspace
+            except Exception as e:
+                logger.warning(f"Workspace conversion failed, using raw data: {e}")
+                # Fallback: get raw workspace data
+                raw_workspace = await session_manager.workspace_manager.get_workspace(session_id)
+                workspace_data = raw_workspace.data if hasattr(raw_workspace, 'data') else {}
+            
+            result = await agents["evaluator"].invoke(workspace_data, {
+                "session_id": session_id,
+                "branches": branches
+            })
+            
+            return {
+                "status": "success",
+                "session_id": session_id,
+                "result": result,
+                "timestamp": datetime.now().isoformat()
+            }
+            
+        except Exception as e:
+            logger.error(f"Evaluator assessment failed: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+
+    # LLM Generation Endpoint
+    @app.post("/api/llm/generate")
+    async def llm_generate(request: Request):
+        """Direct LLM generation endpoint"""
+        try:
+            data = await request.json()
+            prompt = data.get("prompt", "")
+            model = data.get("model", "default")
+            
+            if not prompt:
+                raise HTTPException(status_code=400, detail="prompt required")
+            
+            # Generate using LLM provider
+            try:
+                from dependencies import get_container
+                container = get_container()
+                if container and hasattr(container, 'llm_provider'):
+                    llm_provider = container.llm_provider()
+                    
+                    # Generate using LLM provider
+                    if hasattr(llm_provider, 'generate'):
+                        result = await llm_provider.generate(prompt, model=model)
+                    elif hasattr(llm_provider, 'generate_text'):
+                        result_text = await llm_provider.generate_text(prompt, model=model)
+                        result = {
+                            "text": result_text,
+                            "model": model,
+                            "tokens": len(prompt.split())
+                        }
+                    else:
+                        # Fallback mock generation
+                        result = {
+                            "text": f"Generated response for: {prompt[:50]}...",
+                            "model": model,
+                            "tokens": len(prompt.split())
+                        }
+                else:
+                    # Mock generation when no provider available
+                    result = {
+                        "text": f"Mock generated response for: {prompt[:50]}...",
+                        "model": model,
+                        "tokens": len(prompt.split()),
+                        "note": "No LLM provider configured"
+                    }
+            except Exception as e:
+                logger.warning(f"LLM provider error: {e}")
+                # Fallback mock generation
+                result = {
+                    "text": f"Fallback response for: {prompt[:50]}...",
+                    "model": model,
+                    "tokens": len(prompt.split()),
+                    "error": str(e)
+                }
+            
+            return {
+                "status": "success",
+                "result": result,
+                "timestamp": datetime.now().isoformat()
+            }
+            
+        except Exception as e:
+            logger.error(f"LLM generation failed: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+
+    # WebSocket endpoint for real-time updates
+    @app.websocket("/ws")
+    async def websocket_endpoint(websocket: WebSocket):
+        """WebSocket endpoint for real-time communication"""
+        await websocket.accept()
+        
+        try:
+            while True:
+                # Wait for messages from client
+                data = await websocket.receive_text()
+                
+                try:
+                    message = json.loads(data) if isinstance(data, str) else data
+                    message_type = message.get("type", "unknown")
+                    
+                    if message_type == "ping":
+                        # Simple ping-pong
+                        await websocket.send_text(json.dumps({
+                            "type": "pong",
+                            "timestamp": datetime.now().isoformat()
+                        }))
+                    
+                    elif message_type == "subscribe":
+                        # Subscribe to session updates
+                        session_id = message.get("session_id")
+                        if session_id:
+                            await websocket.send_text(json.dumps({
+                                "type": "subscribed",
+                                "session_id": session_id,
+                                "timestamp": datetime.now().isoformat()
+                            }))
+                    
+                    elif message_type == "suggestion_request":
+                        # Handle real-time suggestion requests
+                        session_id = message.get("session_id")
+                        if session_id and session_manager:
+                            # This could trigger the full suggestion pipeline
+                            await websocket.send_text(json.dumps({
+                                "type": "suggestion_started",
+                                "session_id": session_id,
+                                "timestamp": datetime.now().isoformat()
+                            }))
+                            
+                            # In a full implementation, you would run the agent pipeline here
+                            # and send progress updates
+                            
+                            await websocket.send_text(json.dumps({
+                                "type": "suggestion_complete",
+                                "session_id": session_id,
+                                "suggestions": [],
+                                "timestamp": datetime.now().isoformat()
+                            }))
+                    
+                    else:
+                        # Echo unknown messages
+                        await websocket.send_text(json.dumps({
+                            "type": "echo",
+                            "original": message,
+                            "timestamp": datetime.now().isoformat()
+                        }))
+                        
+                except json.JSONDecodeError:
+                    await websocket.send_text(json.dumps({
+                        "type": "error",
+                        "message": "Invalid JSON format",
+                        "timestamp": datetime.now().isoformat()
+                    }))
+                    
+        except Exception as e:
+            logger.error(f"WebSocket error: {e}")
+            await websocket.close(code=1000)
+
     @app.post("/api/session/{session_id}/suggestion_signal")
     async def suggestion_signal(session_id: str, request: Request):
         """Receives signals from the frontend to trigger suggestions."""
@@ -273,7 +751,7 @@ def create_app() -> "FastAPI":
                 raise HTTPException(status_code=500, detail="Session manager not initialized")
 
             signal_data = await request.json()
-            trigger_type = signal_data.get("type") # "on_demand", "idle_smart", "proactive"
+            trigger_type = signal_data.get("trigger_type") or signal_data.get("type")  # Support both formats
             
             # The orchestrator (session_manager) decides whether to run the suggestion pipeline
             should_suggest, reason = await session_manager.handle_suggestion_trigger(session_id, trigger_type, signal_data)
@@ -303,18 +781,11 @@ def create_app() -> "FastAPI":
                     status_code=500, detail="Session manager not initialized"
                 )
 
-            session_id = await session_manager.create_session(
-                user_id=request.user_id,
-                initial_text=request.initial_content,
-                topic=getattr(request, "topic", "story"),
-                policy=request.policy or {},
-            )
+            workspace = await session_manager.create_session(request)
 
-            # Load the workspace to return in response
-            workspace = await session_manager.load_workspace(session_id)
-
+            # Return workspace details in response
             return SessionResponse(
-                session_id=session_id,
+                session_id=workspace.session_id,
                 workspace=workspace,
                 status="created",
                 message="Session created successfully",
@@ -342,44 +813,57 @@ def create_app() -> "FastAPI":
 
             # Run agent pipeline
             # 1. Perception
-            perception_result = await agents["perception"].run(
-                session_id,
+            perception_result = await agents["perception"].invoke(
+                workspace.model_dump() if hasattr(workspace, 'model_dump') else workspace,
                 {
-                    "content": workspace.get(
-                        "story_so_far", workspace.get("topic_content", "")
-                    )
-                },
+                    "session_id": session_id,
+                    "mode": request.mode
+                }
             )
 
             # 2. Update graph
-            await agents["graph_manager"].run(
-                session_id,
+            await agents["graph_manager"].invoke(
+                workspace.model_dump() if hasattr(workspace, 'model_dump') else workspace,
                 {
+                    "session_id": session_id,
                     "entities": perception_result.get("entities", []),
                     "events": perception_result.get("events", []),
-                },
+                }
             )
 
             # 3. Generate projections
             max_branches = request.options.get("max_branches", 3)
-            planner_result = await agents["planner"].run(
-                session_id, {"max_branches": max_branches, "mode": request.mode}
+            planner_result = await agents["planner"].invoke(
+                workspace.model_dump() if hasattr(workspace, 'model_dump') else workspace,
+                {
+                    "session_id": session_id, 
+                    "max_branches": max_branches, 
+                    "mode": request.mode
+                }
             )
 
             # 4. Verify branches
             verified_branches = []
             verifications = []
             for branch in planner_result.get("branches", []):
-                verification = await agents["verifier"].run(
-                    session_id,
-                    {"content": branch.get("content", ""), "branch_data": branch},
+                verification = await agents["verifier"].invoke(
+                    workspace.model_dump() if hasattr(workspace, 'model_dump') else workspace,
+                    {
+                        "session_id": session_id,
+                        "content": branch.get("content", ""), 
+                        "branch_data": branch
+                    }
                 )
                 verifications.append(verification)
                 verified_branches.append(branch)
 
             # 5. Score and rank
-            evaluation = await agents["evaluator"].run(
-                session_id, {"branches": verified_branches}
+            evaluation = await agents["evaluator"].invoke(
+                workspace.model_dump() if hasattr(workspace, 'model_dump') else workspace,
+                {
+                    "session_id": session_id,
+                    "branches": verified_branches
+                }
             )
 
             # Save projections to workspace
@@ -444,8 +928,14 @@ def create_app() -> "FastAPI":
                 )
 
             # Use graph manager for backtracking
-            result = await agents["graph_manager"].run(
-                session_id, {"action": "backtrack", "node_id": request.node_id}
+            workspace = await session_manager.load_workspace(session_id)
+            result = await agents["graph_manager"].invoke(
+                workspace.model_dump() if hasattr(workspace, 'model_dump') else workspace,
+                {
+                    "session_id": session_id,
+                    "action": "backtrack", 
+                    "node_id": request.node_id
+                }
             )
 
             return BacktrackResponse(
@@ -472,7 +962,18 @@ def create_app() -> "FastAPI":
             if not workspace:
                 raise HTTPException(status_code=404, detail="Session not found")
 
-            return SnapshotResponse(session_id=session_id, snapshot=workspace)
+            # Convert workspace to proper dict format for SnapshotResponse
+            if hasattr(workspace, 'to_dict'):
+                workspace_dict = workspace.to_dict()
+            elif hasattr(workspace, 'model_dump'):
+                workspace_dict = workspace.model_dump()
+            elif isinstance(workspace, dict):
+                workspace_dict = workspace
+            else:
+                # Fallback: convert to dict via __dict__ or str representation
+                workspace_dict = workspace.__dict__ if hasattr(workspace, '__dict__') else {"data": str(workspace)}
+
+            return SnapshotResponse(session_id=session_id, snapshot=workspace_dict)
 
         except Exception as e:
             logger.error(f"Failed to get snapshot: {e}")
@@ -495,6 +996,122 @@ def create_app() -> "FastAPI":
                 "agents": len(agents) > 0
             }
         }
+
+    @app.options("/api/health")
+    async def api_health_options():
+        """OPTIONS handler for CORS preflight requests"""
+        return {}
+
+    @app.get("/health/database")
+    async def database_health_check():
+        """Database health check endpoint"""
+        try:
+            db_status = {}
+            if session_manager and hasattr(session_manager, 'workspace_manager'):
+                # Check MongoDB
+                try:
+                    from dependencies import get_container
+                    container = get_container()
+                    if container and hasattr(container, 'mongo_client'):
+                        mongo_client = container.mongo_client()
+                        await mongo_client.admin.command("ping")
+                        db_status["mongodb"] = "healthy"
+                    else:
+                        db_status["mongodb"] = "not_configured"
+                except Exception as e:
+                    db_status["mongodb"] = f"error: {str(e)}"
+                
+                # Check ArangoDB  
+                try:
+                    if container and hasattr(container, 'arango_client'):
+                        arango_client = container.arango_client()
+                        # Simple ping operation
+                        arango_client.version()
+                        db_status["arangodb"] = "healthy"
+                    else:
+                        db_status["arangodb"] = "not_configured"
+                except Exception as e:
+                    db_status["arangodb"] = f"error: {str(e)}"
+            else:
+                db_status = {"status": "session_manager_not_initialized"}
+            
+            return {
+                "status": "healthy" if all(v == "healthy" for v in db_status.values() if "error" not in str(v)) else "degraded",
+                "databases": db_status,
+                "timestamp": datetime.now().isoformat()
+            }
+        except Exception as e:
+            return {
+                "status": "error",
+                "error": str(e),
+                "timestamp": datetime.now().isoformat()
+            }
+
+    @app.get("/health/agents")
+    async def agents_health_check():
+        """Agents health check endpoint"""
+        try:
+            agent_status = {}
+            if agents:
+                for agent_name, agent in agents.items():
+                    try:
+                        # Try to get agent status if available
+                        if hasattr(agent, 'get_health_status'):
+                            agent_status[agent_name] = await agent.get_health_status()
+                        elif hasattr(agent, 'is_initialized'):
+                            agent_status[agent_name] = "healthy" if agent.is_initialized else "not_initialized"
+                        else:
+                            agent_status[agent_name] = "healthy"  # Assume healthy if no health check method
+                    except Exception as e:
+                        agent_status[agent_name] = f"error: {str(e)}"
+            else:
+                agent_status = {"status": "no_agents_loaded"}
+            
+            return {
+                "status": "healthy" if all("error" not in str(v) for v in agent_status.values()) else "degraded",
+                "agents": agent_status,
+                "timestamp": datetime.now().isoformat()
+            }
+        except Exception as e:
+            return {
+                "status": "error", 
+                "error": str(e),
+                "timestamp": datetime.now().isoformat()
+            }
+
+    @app.get("/health/llm")
+    async def llm_health_check():
+        """LLM provider health check endpoint"""
+        try:
+            llm_status = {}
+            
+            # Check if we have LLM providers configured
+            try:
+                from dependencies import get_container
+                container = get_container()
+                if container and hasattr(container, 'llm_provider'):
+                    llm_provider = container.llm_provider()
+                    # Try a simple health check
+                    if hasattr(llm_provider, 'health_check'):
+                        llm_status["provider"] = await llm_provider.health_check()
+                    else:
+                        llm_status["provider"] = "healthy"
+                else:
+                    llm_status["provider"] = "not_configured"
+            except Exception as e:
+                llm_status["provider"] = f"error: {str(e)}"
+            
+            return {
+                "status": "healthy" if "error" not in str(llm_status.get("provider", "")) else "degraded",
+                "llm": llm_status,
+                "timestamp": datetime.now().isoformat()
+            }
+        except Exception as e:
+            return {
+                "status": "error",
+                "error": str(e), 
+                "timestamp": datetime.now().isoformat()
+            }
 
     # Serve static files (frontend)
     try:

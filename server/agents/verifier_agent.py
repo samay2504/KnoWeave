@@ -836,7 +836,7 @@ class VerifierAgent:
         result.grammar_score = self._check_grammar(projection.paragraph)
 
         # 2. POV consistency checking
-        result.pov_consistent = self._check_pov_consistency(
+        result.pov_consistent = self._check_pov_consistency_with_workspace(
             workspace, projection.paragraph
         )
         if not result.pov_consistent:
@@ -912,7 +912,7 @@ class VerifierAgent:
         score = 1.0 - (issues_found / total_checks)
         return max(0.0, score)
 
-    def _check_pov_consistency(self, workspace: WorkspaceSchema, text: str) -> bool:
+    def _check_pov_consistency_with_workspace(self, workspace: WorkspaceSchema, text: str) -> bool:
         """Check if point of view is consistent with the workspace"""
         if not workspace.policy.preserve_pov:
             return True  # POV preservation not required

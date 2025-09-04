@@ -1,6 +1,14 @@
 """
 Human-AI Co-Creation Platform - Dependency Container System
-Copyright (c) 2025 Samay Mehar. All rights reserved.
+Copyright (c) 2025 Samay Mehar. All rights        if CORE_SYSTEM_AVAILABLE:
+            components['LLMProvider'] = import_manager.get_attribute('server.llm_provider', 'AsyncLLMProvider')
+        else:
+            try:
+                from server.llm_provider import AsyncLLMProvider as LLMProvider
+                components['LLMProvider'] = LLMProvider
+            except ImportError:
+                logger.warning("LLM provider components not available")
+                components['LLMProvider'] = None.
 Patent Pending - Samay Mehar
 
 Production-grade dependency injection system with dual database support.
@@ -36,11 +44,13 @@ class ProductionDependencyContainer:
         self.config = config or self._load_config()
         self._mongo_client: Optional[Any] = None
         self._arango_client: Optional[Any] = None
+        self._llm_provider: Optional[Any] = None
         self._initialized = False
         
         # Load components dynamically
         self._mongo_components = self._load_mongo_components()
         self._arango_components = self._load_arango_components()
+        self._llm_components = self._load_llm_components()
     
     def _load_config(self) -> Any:
         """Load configuration with fallbacks"""
@@ -100,6 +110,22 @@ class ProductionDependencyContainer:
         
         return components
     
+    def _load_llm_components(self) -> Dict[str, Any]:
+        """Load LLM provider components with fallbacks"""
+        components = {}
+        
+        if CORE_SYSTEM_AVAILABLE:
+            components['AsyncLLMProvider'] = import_manager.get_attribute('server.llm_provider', 'AsyncLLMProvider')
+        else:
+            try:
+                from server.llm_provider import AsyncLLMProvider
+                components['AsyncLLMProvider'] = AsyncLLMProvider
+            except ImportError:
+                logger.warning("LLM provider components not available")
+                components['AsyncLLMProvider'] = None
+        
+        return components
+    
     async def initialize(self):
         """Initialize all dependencies based on configuration"""
         if self._initialized:
@@ -115,6 +141,9 @@ class ProductionDependencyContainer:
             # Initialize ArangoDB if needed  
             if self._should_init_arango():
                 await self._init_arangodb()
+            
+            # Initialize LLM provider
+            await self._init_llm_provider()
             
             self._initialized = True
             logger.info("Dependency container initialized")
@@ -171,6 +200,26 @@ class ProductionDependencyContainer:
             logger.warning(f"❌ ArangoDB client could not be initialized: {e}")
             logger.info("🔄 System will continue with MongoDB-only mode")
     
+    async def _init_llm_provider(self):
+        """Initialize LLM provider"""
+        try:
+            AsyncLLMProvider = self._llm_components.get('AsyncLLMProvider')
+            if AsyncLLMProvider:
+                # Create configuration for LLM provider
+                llm_config = {
+                    'providers': ['huggingface', 'gemini', 'openai', 'groq'],
+                    'model': 'gpt-3.5-turbo',
+                    'temperature': 0.7,
+                    'max_tokens': 1000
+                }
+                # Initialize with configuration
+                self._llm_provider = AsyncLLMProvider(llm_config)
+                await self._llm_provider.initialize()
+                logger.info("LLM provider initialized successfully")
+        except Exception as e:
+            logger.warning(f"Failed to initialize LLM provider: {e}")
+            logger.info("System will continue without LLM capabilities")
+    
     async def cleanup(self):
         """Cleanup all dependencies"""
         logger.info("Cleaning up dependencies...")
@@ -188,6 +237,13 @@ class ProductionDependencyContainer:
                 logger.info("ArangoDB client closed")
             except Exception as e:
                 logger.error(f"Error closing ArangoDB: {e}")
+                
+        if self._llm_provider and hasattr(self._llm_provider, 'cleanup'):
+            try:
+                await self._llm_provider.cleanup()
+                logger.info("LLM provider cleaned up")
+            except Exception as e:
+                logger.error(f"Error cleaning up LLM provider: {e}")
         
         self._initialized = False
     
@@ -198,6 +254,22 @@ class ProductionDependencyContainer:
     def get_arango_client(self) -> Optional[Any]:
         """Get ArangoDB client instance"""
         return self._arango_client
+    
+    def get_llm_provider(self) -> Optional[Any]:
+        """Get LLM provider instance"""
+        return self._llm_provider
+    
+    def mongo_client(self) -> Optional[Any]:
+        """Compatibility method for MongoDB client"""
+        return self._mongo_client
+    
+    def arango_client(self) -> Optional[Any]:
+        """Compatibility method for ArangoDB client"""
+        return self._arango_client
+    
+    def llm_provider(self) -> Optional[Any]:
+        """Compatibility method for LLM provider"""
+        return self._llm_provider
     
     def get_config(self) -> Any:
         """Get server configuration"""

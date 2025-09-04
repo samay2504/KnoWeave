@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, status
 from pydantic import BaseModel, Field
 from typing import Dict, Any, Optional
 import logging
@@ -60,8 +60,29 @@ class PromptGenerationResponse(BaseModel):
 # Dependency to get session manager
 async def get_session_manager() -> SessionManager:
     """Get the global session manager instance"""
-    # In production, this would come from a dependency injection container
-    return SessionManager()
+    # Import at runtime to avoid circular imports
+    import sys
+    app_module = sys.modules.get('server.app')
+    if app_module is None:
+        # Try alternative import
+        try:
+            from server import app as app_module
+        except ImportError:
+            try:
+                import app as app_module
+            except ImportError:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="Unable to access application module"
+                )
+    
+    session_manager = getattr(app_module, 'session_manager', None)
+    if session_manager is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Session manager not initialized"
+        )
+    return session_manager
 
 @mode_router.post("/mode", response_model=ModeUpdateResponse)
 async def update_mode(

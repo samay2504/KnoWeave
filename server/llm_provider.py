@@ -7,6 +7,7 @@ import os
 import logging
 import asyncio
 import json
+import re
 from datetime import datetime
 from typing import Optional, Dict, Any, Union, List
 from pathlib import Path
@@ -145,18 +146,75 @@ class AsyncLLMProvider:
         except Exception as e:
             logger.warning(f"Failed to write prompt audit log: {e}")
 
+    def _has_api_key(self, env_var_name: str) -> bool:
+        """Check if an API key is configured for the given environment variable."""
+        # Check environment variables first
+        env_value = os.getenv(env_var_name)
+        if env_value:
+            logger.debug(f"Found {env_var_name} in environment variables")
+            return True
+        
+        # Check config dictionary
+        api_keys = self.config.get("api_keys", {})
+        if env_var_name in api_keys and api_keys[env_var_name]:
+            logger.debug(f"Found {env_var_name} in config")
+            return True
+        
+        # Check alternative key names in config
+        key_mapping = {
+            "GOOGLE_API_KEY": ["google_genai", "google", "gemini"],
+            "GROQ_API_KEY": ["groq"],
+            "OPENROUTER_API_KEY": ["openrouter"],
+            "HUGGINGFACEHUB_API_TOKEN": ["huggingface", "hf"],
+            "OPENAI_API_KEY": ["openai"]
+        }
+        
+        if env_var_name in key_mapping:
+            for alt_key in key_mapping[env_var_name]:
+                if alt_key in api_keys and api_keys[alt_key]:
+                    logger.debug(f"Found {env_var_name} under alternate key {alt_key}")
+                    return True
+        
+        logger.debug(f"API key {env_var_name} not found")
+        return False
+
     async def initialize(self) -> None:
         """Initialize the LLM provider asynchronously"""
+        # Ensure environment variables are loaded
+        try:
+            from dotenv import load_dotenv
+            load_dotenv()
+            logger.debug("Reloaded environment variables for LLM provider")
+        except ImportError:
+            pass
+        
         await self._setup_llm()
 
     async def _setup_llm(self) -> None:
-        """Setup LLM with fallback chain based on configuration."""
+        """Setup LLM with fallback chain based on configuration and available API keys."""
+        
+        # Debug: Check which API keys are available
+        logger.info("Checking available LLM API keys...")
+        api_keys_status = {
+            "OPENAI_API_KEY": self._has_api_key("OPENAI_API_KEY"),
+            "GOOGLE_API_KEY": self._has_api_key("GOOGLE_API_KEY"), 
+            "GROQ_API_KEY": self._has_api_key("GROQ_API_KEY"),
+            "OPENROUTER_API_KEY": self._has_api_key("OPENROUTER_API_KEY"),
+            "HUGGINGFACEHUB_API_TOKEN": self._has_api_key("HUGGINGFACEHUB_API_TOKEN")
+        }
+        
+        available_keys = [k for k, v in api_keys_status.items() if v]
+        if available_keys:
+            logger.info(f"Available API keys: {', '.join(available_keys)}")
+        else:
+            logger.info("No API keys found, will use fallback provider")
+        
         # Get provider preference from config or use default
         provider_preference = self.config.get(
             "provider_preference",
             [
                 "google_genai",
-                "groq",
+                "groq", 
                 "openrouter",
                 "huggingface",
                 "openai",
@@ -167,28 +225,36 @@ class AsyncLLMProvider:
 
         # Map provider names to their functions
         provider_map = {
-            "huggingface": ("HuggingFace", self._try_huggingface),
-            "google_genai": ("Google Gemini", self._try_google_genai),
-            "groq": ("Groq", self._try_groq),
-            "openrouter": ("OpenRouter", self._try_openrouter),
-            "openai": ("OpenAI", self._try_openai),
-            "local": ("Local LLM", self._try_local_llm),
-            "fallback": ("Fallback", self._create_fallback_llm),
+            "huggingface": ("HuggingFace", self._try_huggingface, "HUGGINGFACEHUB_API_TOKEN"),
+            "google_genai": ("Google Gemini", self._try_google_genai, "GOOGLE_API_KEY"),
+            "groq": ("Groq", self._try_groq, "GROQ_API_KEY"),
+            "openrouter": ("OpenRouter", self._try_openrouter, "OPENROUTER_API_KEY"),
+            "openai": ("OpenAI", self._try_openai, "OPENAI_API_KEY"),
+            "local": ("Local LLM", self._try_local_llm, None),  # No API key needed
+            "fallback": ("Fallback", self._create_fallback_llm, None),  # No API key needed
         }
 
-        # Build provider list based on preference
-        providers = []
+        # First, check which providers have valid API keys
+        available_providers = []
         for provider_name in provider_preference:
             if provider_name in provider_map:
-                providers.append(provider_map[provider_name])
+                provider_display, provider_func, api_key_env = provider_map[provider_name]
+                
+                # Skip providers that require API keys but don't have them configured
+                if api_key_env and not self._has_api_key(api_key_env):
+                    logger.debug(f"Skipping {provider_display}: {api_key_env} not configured")
+                    continue
+                
+                available_providers.append((provider_display, provider_func))
 
-        # Add any missing providers at the end
-        for provider_name, provider_func in provider_map.items():
-            if provider_name not in provider_preference:
-                providers.append(provider_func)
+        # If no providers with API keys are available, add local and fallback
+        if not available_providers:
+            if "local" in provider_map:
+                available_providers.append(("Local LLM", provider_map["local"][1]))
+            available_providers.append(("Fallback", provider_map["fallback"][1]))
 
         failed_providers = []
-        for provider_name, provider_func in providers:
+        for provider_name, provider_func in available_providers:
             try:
                 print_status(f"Testing {provider_name} provider...", "progress")
                 self.llm = await provider_func()
@@ -228,9 +294,14 @@ class AsyncLLMProvider:
                 continue
 
         # If all providers fail, create fallback
-        self.llm = await self._create_fallback_llm()
-        print_status("All LLM providers failed, using fallback mode", "warning")
-        print_llm_fallback_info(failed_providers, "Fallback")
+        if not self.llm:
+            self.llm = await self._create_fallback_llm()
+            if available_providers:
+                print_status("All configured LLM providers failed, using fallback mode", "warning")
+                print_llm_fallback_info(failed_providers, "Fallback")
+            else:
+                print_status("No LLM API keys configured, using fallback mode", "info")
+                logger.info("Production tip: Configure API keys in environment variables or .env file for LLM capabilities")
 
     async def _test_huggingface_token(self) -> bool:
         """Test if HuggingFace token has proper permissions."""
@@ -238,7 +309,7 @@ class AsyncLLMProvider:
             return False
 
         try:
-            api_key = self.config.get("api_keys", {}).get("huggingface")
+            api_key = os.getenv("HUGGINGFACEHUB_API_TOKEN") or self.config.get("api_keys", {}).get("huggingface")
             if not api_key:
                 return False
 
@@ -256,7 +327,8 @@ class AsyncLLMProvider:
         if not HUGGINGFACE_AVAILABLE:
             raise ImportError("langchain_huggingface not available")
 
-        api_key = self.config.get("api_keys", {}).get("huggingface")
+        # Get API key from environment or config
+        api_key = os.getenv("HUGGINGFACEHUB_API_TOKEN") or self.config.get("api_keys", {}).get("huggingface")
         if not api_key:
             raise ValueError("HUGGINGFACEHUB_API_TOKEN not set")
 
@@ -329,7 +401,7 @@ class AsyncLLMProvider:
         if not GOOGLE_GENAI_AVAILABLE:
             raise ImportError("langchain_google_genai not available")
 
-        api_key = self.config.get("api_keys", {}).get("google")
+        api_key = os.getenv("GOOGLE_API_KEY") or self.config.get("api_keys", {}).get("google")
         if not api_key:
             raise ValueError("GOOGLE_API_KEY not set")
 
@@ -407,7 +479,7 @@ class AsyncLLMProvider:
         if not OPENAI_AVAILABLE:
             raise ImportError("langchain_openai not available")
 
-        api_key = self.config.get("api_keys", {}).get("openai")
+        api_key = os.getenv("OPENAI_API_KEY") or self.config.get("api_keys", {}).get("openai")
         if not api_key:
             raise ValueError("OPENAI_API_KEY not set")
 
@@ -451,7 +523,7 @@ class AsyncLLMProvider:
         if not GROQ_AVAILABLE:
             raise ImportError("langchain_groq not available")
 
-        api_key = self.config.get("api_keys", {}).get("groq")
+        api_key = os.getenv("GROQ_API_KEY") or self.config.get("api_keys", {}).get("groq")
         if not api_key:
             raise ValueError("GROQ_API_KEY not set")
 
@@ -503,7 +575,7 @@ class AsyncLLMProvider:
         if not OPENROUTER_AVAILABLE:
             raise ImportError("langchain_openai not available for OpenRouter")
 
-        api_key = self.config.get("api_keys", {}).get("openrouter")
+        api_key = os.getenv("OPENROUTER_API_KEY") or self.config.get("api_keys", {}).get("openrouter")
         if not api_key:
             raise ValueError("OPENROUTER_API_KEY not set")
 

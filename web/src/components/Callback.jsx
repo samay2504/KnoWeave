@@ -1,5 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { authFetch, parseAuthError, getErrorRedirectUrl } from '../utils/auth';
+import AUTH_CONFIG from '../config/auth';
 
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
 
@@ -59,32 +61,24 @@ const Callback = ({ onAuthSuccess, onAuthFailure }) => {
         setProgress(30);
         setStatus('exchanging');
 
-        // Exchange code for tokens - use GET with query parameters to match backend
+        // Exchange code for tokens with improved error handling
         const callbackUrl = new URL(`${API_BASE_URL}/auth/google/callback`);
         callbackUrl.searchParams.set('code', code);
         if (state) {
           callbackUrl.searchParams.set('state', state);
         }
 
-        const response = await fetch(callbackUrl.toString(), {
+        const response = await authFetch(callbackUrl.toString(), {
           method: 'GET',
           credentials: 'include',
-          signal: abortControllerRef.current.signal
         });
 
         setProgress(60);
 
         if (!response.ok) {
           const errorData = await response.json().catch(() => null);
-          let errorMessage = `Authentication failed (${response.status})`;
-          
-          if (errorData?.detail) {
-            errorMessage = errorData.detail;
-          } else if (errorData?.message) {
-            errorMessage = errorData.message;
-          }
-          
-          throw new Error(errorMessage);
+          const userFriendlyError = parseAuthError(errorData?.detail || errorData?.message, response);
+          throw new Error(userFriendlyError);
         }
 
         const data = await response.json();
@@ -123,10 +117,16 @@ const Callback = ({ onAuthSuccess, onAuthFailure }) => {
         }
         
         console.error('Callback handling error:', err);
-        setError(err.message || 'Authentication failed');
+        const userFriendlyError = parseAuthError(err);
+        setError(userFriendlyError);
         setStatus('error');
         setProgress(0);
         onAuthFailure?.(err);
+        
+        // Auto-redirect to login after a delay for better UX
+        setTimeout(() => {
+          navigate(getErrorRedirectUrl(err), { replace: true });
+        }, 5000);
       }
     };
 

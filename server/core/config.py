@@ -54,6 +54,8 @@ class DynamicConfig(BaseSettings):
     # Database Configuration
     database_mode: str = Field(default="both", env="DATABASE_MODE")
     mongo_uri: str = Field(default="mongodb://localhost:27017", env="MONGO_URI")
+    mongodb_database: str = Field(default="human_ai_co_create", env="MONGODB_DATABASE")
+    redis_url: Optional[str] = Field(default=None, env="REDIS_URL")
     arango_url: str = Field(default="http://localhost:8529", env="ARANGO_URL")
     arango_user: str = Field(default="root", env="ARANGO_USER")
     arango_password: str = Field(default="", env="ARANGO_PASSWORD")

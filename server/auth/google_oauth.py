@@ -53,7 +53,8 @@ class GoogleOAuth:
             "scope": "openid email profile",
             "state": state,
             "access_type": "offline",
-            "prompt": "consent",
+            "prompt": "select_account",  # Changed from 'consent' to reduce friction
+            "include_granted_scopes": "true",  # Include previously granted scopes
         }
         return f"{self.auth_url}?{urlencode(params)}"
 
@@ -67,9 +68,32 @@ class GoogleOAuth:
             "redirect_uri": self.redirect_uri,
         }
 
-        async with httpx.AsyncClient() as client:
-            response = await client.post(self.token_url, data=data)
+        # Add timeout and retry logic for better reliability
+        timeout_config = httpx.Timeout(30.0, connect=10.0)  # 30s total, 10s connect
+        
+        async with httpx.AsyncClient(timeout=timeout_config) as client:
+            try:
+                response = await client.post(self.token_url, data=data)
+            except httpx.TimeoutException:
+                raise HTTPException(
+                    status_code=408, 
+                    detail="Request timeout while exchanging authorization code. Please try again."
+                )
+            except httpx.ConnectError:
+                raise HTTPException(
+                    status_code=503, 
+                    detail="Unable to connect to Google's servers. Please try again later."
+                )
 
+        if response.status_code == 400:
+            error_data = response.json()
+            error_description = error_data.get("error_description", "")
+            if "expired" in error_description.lower() or "invalid_grant" in error_data.get("error", ""):
+                raise HTTPException(
+                    status_code=400, 
+                    detail="Authorization code has expired or been used. Please try logging in again."
+                )
+            
         if response.status_code != 200:
             raise HTTPException(
                 status_code=400, detail=f"Token exchange failed: {response.text}"

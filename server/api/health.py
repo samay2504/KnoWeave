@@ -15,17 +15,7 @@ from datetime import datetime
 
 # Import optional dependencies with fallbacks for Python 3.12+ compatibility
 try:
-    import aioredis
-
-    AIOREDIS_AVAILABLE = True
-except (ImportError, TypeError) as e:
-    # Handle both missing package and Python 3.12+ TimeoutError compatibility issue
-    AIOREDIS_AVAILABLE = False
-    aioredis = None
-
-try:
     from motor.motor_asyncio import AsyncIOMotorClient
-
     MOTOR_AVAILABLE = True
 except ImportError:
     MOTOR_AVAILABLE = False
@@ -33,7 +23,6 @@ except ImportError:
 
 try:
     from arango import ArangoClient
-
     ARANGO_AVAILABLE = True
 except ImportError:
     ARANGO_AVAILABLE = False
@@ -41,7 +30,6 @@ except ImportError:
 
 try:
     import psutil
-
     PSUTIL_AVAILABLE = True
 except ImportError:
     PSUTIL_AVAILABLE = False
@@ -55,13 +43,27 @@ import sys
 
 sys.path.append(str(Path(__file__).parent.parent))
 
-# Import with proper paths
-from db.arango_client import ArangoClient
-from db.mongo_client import MongoClient
+# Import with proper paths - with fallbacks for missing components
+try:
+    from db.arango_client import ArangoDBManager
+except ImportError:
+    ArangoDBManager = None
+
+try:
+    from db.mongo_client import MongoDBManager
+except ImportError:
+    MongoDBManager = None
+
 try:
     from server_config import ServerConfig
 except ImportError:
-    from ..server_config import ServerConfig
+    try:
+        from ..server_config import ServerConfig
+    except ImportError:
+        # Fallback config class
+        class ServerConfig:
+            def __init__(self):
+                self.ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
 
 
 class HealthStatus(BaseModel):
@@ -139,19 +141,6 @@ async def check_database_connection(db_manager, db_name: str) -> ComponentHealth
                     },
                 )
 
-        elif db_name == "redis":
-            # Test Redis connection
-            result = await db_manager.ping()
-            if result:
-                response_time = (time.time() - start_time) * 1000
-                return ComponentHealth(
-                    name=db_name,
-                    status="up",
-                    response_time_ms=response_time,
-                    last_check=datetime.utcnow().isoformat(),
-                    metadata={"cache_enabled": True},
-                )
-
     except Exception as e:
         return ComponentHealth(
             name=db_name,
@@ -211,8 +200,11 @@ async def check_json_fallback_system() -> ComponentHealth:
 def get_system_metrics() -> Dict[str, Any]:
     """Get system performance metrics"""
     try:
+        if not PSUTIL_AVAILABLE:
+            return {"error": "psutil not available"}
+            
         return {
-            "cpu_percent": psutil.cpu_percent(interval=1),
+            "cpu_percent": psutil.cpu_percent(interval=0.1),  # Reduce interval for faster response
             "memory_percent": psutil.virtual_memory().percent,
             "disk_usage_percent": (
                 psutil.disk_usage("/").percent
@@ -243,12 +235,23 @@ async def perform_health_checks() -> DetailedHealthResponse:
 
     try:
         # Check ArangoDB
-        arango_manager = ArangoDBManager(config)
-        arango_health = await check_database_connection(arango_manager, "arangodb")
-        components.append(arango_health)
+        if ArangoDBManager:
+            arango_manager = ArangoDBManager(config)
+            arango_health = await check_database_connection(arango_manager, "arangodb")
+            components.append(arango_health)
 
-        if arango_health.status != "up":
-            warnings.append("ArangoDB connection issues detected")
+            if arango_health.status != "up":
+                warnings.append("ArangoDB connection issues detected")
+        else:
+            components.append(
+                ComponentHealth(
+                    name="arangodb",
+                    status="unavailable",
+                    last_check=datetime.utcnow().isoformat(),
+                    error="ArangoDBManager class not available",
+                )
+            )
+            warnings.append("ArangoDB manager class not found")
 
     except Exception as e:
         components.append(
@@ -263,12 +266,23 @@ async def perform_health_checks() -> DetailedHealthResponse:
 
     try:
         # Check MongoDB
-        mongo_manager = MongoDBManager(config)
-        mongo_health = await check_database_connection(mongo_manager, "mongodb")
-        components.append(mongo_health)
+        if MongoDBManager:
+            mongo_manager = MongoDBManager(config)
+            mongo_health = await check_database_connection(mongo_manager, "mongodb")
+            components.append(mongo_health)
 
-        if mongo_health.status != "up":
-            warnings.append("MongoDB connection issues detected")
+            if mongo_health.status != "up":
+                warnings.append("MongoDB connection issues detected")
+        else:
+            components.append(
+                ComponentHealth(
+                    name="mongodb",
+                    status="unavailable",
+                    last_check=datetime.utcnow().isoformat(),
+                    error="MongoDBManager class not available",
+                )
+            )
+            warnings.append("MongoDB manager class not found")
 
     except Exception as e:
         components.append(
@@ -280,26 +294,6 @@ async def perform_health_checks() -> DetailedHealthResponse:
             )
         )
         warnings.append("MongoDB manager initialization failed")
-
-    try:
-        # Check Redis
-        redis_manager = RedisManager(config)
-        redis_health = await check_database_connection(redis_manager, "redis")
-        components.append(redis_health)
-
-        if redis_health.status != "up":
-            warnings.append("Redis connection issues detected")
-
-    except Exception as e:
-        components.append(
-            ComponentHealth(
-                name="redis",
-                status="down",
-                last_check=datetime.utcnow().isoformat(),
-                error=f"Manager initialization failed: {str(e)}",
-            )
-        )
-        warnings.append("Redis manager initialization failed")
 
     # Check JSON fallback system
     fallback_health = await check_json_fallback_system()
@@ -368,7 +362,7 @@ async def detailed_health_check():
 @router.get("/health/components/{component_name}")
 async def component_health_check(component_name: str):
     """Check specific component health"""
-    valid_components = ["arangodb", "mongodb", "redis", "json_fallback"]
+    valid_components = ["arangodb", "mongodb", "json_fallback"]
 
     if component_name not in valid_components:
         raise HTTPException(
@@ -427,6 +421,147 @@ async def liveness_check():
         }
     except Exception as e:
         raise HTTPException(status_code=503, detail=f"Liveness check failed: {str(e)}")
+
+
+@router.get("/health/database")
+async def database_health():
+    """Database connectivity health check"""
+    try:
+        # Check MongoDB
+        mongodb_health = {"status": "unknown"}
+        try:
+            if MOTOR_AVAILABLE:
+                # Try to get database client from dependency container
+                import sys
+                app_module = sys.modules.get('server.app')
+                if app_module and hasattr(app_module, 'container'):
+                    container = app_module.container
+                    if hasattr(container, 'mongo_client'):
+                        mongo_client = container.mongo_client()
+                        await mongo_client.admin.command('ping')
+                        mongodb_health = {"status": "up", "timestamp": datetime.utcnow().isoformat()}
+                    else:
+                        mongodb_health = {"status": "unavailable", "reason": "mongo_client not found"}
+                else:
+                    mongodb_health = {"status": "unavailable", "reason": "app module not loaded"}
+            else:
+                mongodb_health = {"status": "unavailable", "reason": "motor not available"}
+        except Exception as e:
+            mongodb_health = {"status": "down", "error": str(e)}
+
+        # Check ArangoDB
+        arangodb_health = {"status": "unknown"}
+        try:
+            if ARANGO_AVAILABLE:
+                # Try to get ArangoDB client from dependency container
+                import sys
+                app_module = sys.modules.get('server.app')
+                if app_module and hasattr(app_module, 'container'):
+                    container = app_module.container
+                    if hasattr(container, 'arango_client'):
+                        arango_client = container.arango_client()
+                        # Try to access the database
+                        if hasattr(arango_client, 'db'):
+                            db = arango_client.db('human_ai_co_create')
+                            db.properties()  # Test connection
+                            arangodb_health = {"status": "up", "timestamp": datetime.utcnow().isoformat()}
+                        else:
+                            arangodb_health = {"status": "unavailable", "reason": "db method not found"}
+                    else:
+                        arangodb_health = {"status": "unavailable", "reason": "arango_client not found"}
+                else:
+                    arangodb_health = {"status": "unavailable", "reason": "app module not loaded"}
+            else:
+                arangodb_health = {"status": "unavailable", "reason": "arango not available"}
+        except Exception as e:
+            arangodb_health = {"status": "down", "error": str(e)}
+
+        return {
+            "mongodb": mongodb_health,
+            "arangodb": arangodb_health,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Database health check failed: {str(e)}")
+
+
+@router.get("/health/agents")
+async def agents_health():
+    """Agent system health check"""
+    try:
+        agents_status = {}
+        
+        # Try to get agents from the global app state
+        import sys
+        app_module = sys.modules.get('server.app')
+        
+        if app_module:
+            # Check global agents
+            agents = getattr(app_module, 'agents', {})
+            session_manager = getattr(app_module, 'session_manager', None)
+            
+            # Session Manager
+            if session_manager:
+                agents_status["session_manager"] = {
+                    "status": "up" if hasattr(session_manager, 'config') else "partial",
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+            else:
+                agents_status["session_manager"] = {"status": "down", "reason": "not initialized"}
+            
+            # Other agents
+            agent_names = ["perception", "planner", "graph_manager", "verifier", "evaluator"]
+            for agent_name in agent_names:
+                if agent_name in agents:
+                    agent = agents[agent_name]
+                    agents_status[agent_name] = {
+                        "status": "up" if agent is not None else "down",
+                        "timestamp": datetime.utcnow().isoformat()
+                    }
+                else:
+                    agents_status[agent_name] = {"status": "down", "reason": "not found"}
+        else:
+            # App module not loaded
+            for agent_name in ["session_manager", "perception", "planner", "graph_manager", "verifier", "evaluator"]:
+                agents_status[agent_name] = {"status": "unavailable", "reason": "app module not loaded"}
+
+        return {
+            "agents": agents_status,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Agent health check failed: {str(e)}")
+
+
+@router.get("/health/llm")
+async def llm_health():
+    """LLM provider health check"""
+    try:
+        # Check if LLM provider is configured and accessible
+        llm_status = {"status": "unknown"}
+        
+        try:
+            # Try to get LLM provider from environment or config
+            import os
+            openai_key = os.getenv('OPENAI_API_KEY')
+            anthropic_key = os.getenv('ANTHROPIC_API_KEY')
+            
+            if openai_key or anthropic_key:
+                provider = "openai" if openai_key else "anthropic"
+                llm_status = {
+                    "status": "configured",
+                    "provider": provider,
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+            else:
+                llm_status = {"status": "unavailable", "reason": "no API keys configured"}
+                
+        except Exception as e:
+            llm_status = {"status": "error", "error": str(e)}
+
+        return llm_status
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"LLM health check failed: {str(e)}")
 
 
 # For integration with main FastAPI app

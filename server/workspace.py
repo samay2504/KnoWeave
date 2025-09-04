@@ -27,7 +27,7 @@ try:
     except (ImportError, TypeError) as e:
         # Handle both missing package and Python 3.12+ compatibility issues
         REDIS_AVAILABLE = False
-        print(f"Redis not available: {e}")
+        logger.info(f"Redis not available, using fallback storage: {e}")
 except Exception:
     REDIS_AVAILABLE = False
 
@@ -83,14 +83,30 @@ class Workspace:
     async def initialize(self) -> None:
         """Initialize database connections"""
         try:
-            if MOTOR_AVAILABLE and self.config.MONGODB_URL:
-                self.mongo_client = AsyncIOMotorClient(self.config.MONGODB_URL)
+            # Handle both old-style dict config and new-style object config
+            mongodb_url = None
+            redis_url = None
+            
+            if hasattr(self.config, 'MONGODB_URL'):
+                mongodb_url = self.config.MONGODB_URL
+            elif hasattr(self.config, 'mongodb_url'):
+                mongodb_url = self.config.mongodb_url
+            elif isinstance(self.config, dict):
+                mongodb_url = self.config.get('MONGODB_URL') or self.config.get('mongodb_url')
+            
+            if hasattr(self.config, 'redis_url'):
+                redis_url = self.config.redis_url
+            elif isinstance(self.config, dict):
+                redis_url = self.config.get('redis_url')
+
+            if MOTOR_AVAILABLE and mongodb_url:
+                self.mongo_client = AsyncIOMotorClient(mongodb_url)
                 # Test connection
                 await self.mongo_client.admin.command("ping")
                 logger.info("MongoDB connection established")
 
-            if REDIS_AVAILABLE and self.config.REDIS_URL:
-                self.redis_client = await aioredis.from_url(self.config.REDIS_URL)
+            if REDIS_AVAILABLE and redis_url:
+                self.redis_client = await aioredis.from_url(redis_url)
                 await self.redis_client.ping()
                 logger.info("Redis connection established")
 
@@ -102,7 +118,14 @@ class Workspace:
         try:
             # Try MongoDB first
             if self.mongo_client:
-                db = self.mongo_client[self.config.MONGODB_DATABASE]
+                # Get database name from config
+                database_name = "human_ai_co_create"  # Default
+                if hasattr(self.config, 'mongodb_database'):
+                    database_name = self.config.mongodb_database
+                elif isinstance(self.config, dict):
+                    database_name = self.config.get('mongodb_database', 'human_ai_co_create')
+                
+                db = self.mongo_client[database_name]
                 collection = db.stories
 
                 doc = await collection.find_one({"session_id": self.session_id})
@@ -138,12 +161,24 @@ class Workspace:
         ):  # 30 second throttle
             return
 
-        self.data["metadata"]["last_modified"] = datetime.utcnow().isoformat()
+        # Update last_modified at the top level, not in metadata
+        self.data["last_modified"] = datetime.utcnow()
+        # Also update last_activity in metadata
+        if "metadata" not in self.data:
+            self.data["metadata"] = {}
+        self.data["metadata"]["last_activity"] = datetime.utcnow()
 
         try:
             # Save to MongoDB
             if self.mongo_client:
-                db = self.mongo_client[self.config.MONGODB_DATABASE]
+                # Get database name from config
+                database_name = "human_ai_co_create"  # Default
+                if hasattr(self.config, 'mongodb_database'):
+                    database_name = self.config.mongodb_database
+                elif isinstance(self.config, dict):
+                    database_name = self.config.get('mongodb_database', 'human_ai_co_create')
+                
+                db = self.mongo_client[database_name]
                 collection = db.stories
 
                 await collection.update_one(
@@ -174,13 +209,16 @@ class Workspace:
             timestamp = int(time.time())
             snapshot_path = snapshot_dir / f"snapshot_{timestamp}.json"
 
+            # Prepare data for JSON serialization (handle datetime objects)
+            serializable_data = self._make_json_serializable(self.data)
+
             # Save current state
             with open(json_path, "w", encoding="utf-8") as f:
-                json.dump(self.data, f, ensure_ascii=False, indent=2)
+                json.dump(serializable_data, f, ensure_ascii=False, indent=2)
 
             # Save timestamped snapshot
             with open(snapshot_path, "w", encoding="utf-8") as f:
-                json.dump(self.data, f, ensure_ascii=False, indent=2)
+                json.dump(serializable_data, f, ensure_ascii=False, indent=2)
 
             # Clean old snapshots (keep last 10)
             snapshots = sorted(snapshot_dir.glob("snapshot_*.json"))
@@ -191,6 +229,17 @@ class Workspace:
 
         except Exception as e:
             logger.error(f"Failed to save JSON snapshot: {e}")
+
+    def _make_json_serializable(self, obj):
+        """Convert datetime objects to ISO format strings for JSON serialization"""
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        elif isinstance(obj, dict):
+            return {key: self._make_json_serializable(value) for key, value in obj.items()}
+        elif isinstance(obj, list):
+            return [self._make_json_serializable(item) for item in obj]
+        else:
+            return obj
 
     def _get_json_path(self) -> Path:
         """Get JSON file path for this workspace"""
@@ -282,14 +331,33 @@ class Workspace:
     def to_schema(self) -> WorkspaceSchema:
         """Convert to Pydantic schema"""
         try:
-            return WorkspaceSchema.parse_obj(self.data)
+            # Prepare the data with proper field mapping
+            schema_data = {
+                "session_id": self.session_id,
+                "user_id": self.data.get("user_id", "unknown_user"),  # Provide default if missing
+                "topic": self.data.get("topic", "story"),
+                "topic_descriptor": self.data.get("topic_descriptor", ""),
+                "topic_content": self.get_story_content(),  # Use the method that handles both story_so_far and topic_content
+                "events": self.data.get("events", []),
+                "characters": self.data.get("characters", {}),
+                "kb_triples": self.data.get("kb_triples", []),
+                "projections": self.data.get("projections", {}),
+                "history": self.data.get("history", []),
+                "graph": self.data.get("graph", {"nodes": [], "edges": []}),
+                "policy": self.data.get("policy", {}),
+                "metadata": self.data.get("metadata", {}),
+                "created_at": self.data.get("created_at", datetime.utcnow()),
+                "last_modified": self.data.get("last_modified", datetime.utcnow()),
+            }
+            return WorkspaceSchema.model_validate(schema_data)
         except Exception as e:
             logger.error(f"Failed to convert to schema: {e}")
             # Return minimal valid schema
             return WorkspaceSchema(
                 session_id=self.session_id,
+                user_id=self.data.get("user_id", "unknown_user"),
                 topic=self.data.get("topic", "story"),
-                story_so_far=self.get_story_content(),
+                topic_content=self.get_story_content(),
                 events=self.data.get("events", []),
                 characters=self.data.get("characters", {}),
                 projections=self.data.get("projections", {}),

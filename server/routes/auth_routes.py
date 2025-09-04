@@ -18,17 +18,19 @@ from auth.google_oauth import (
     get_current_user_from_request,
 )
 
-
-from dependencies import get_mongo_client
-
-
-# Note: get_mongo_client is now imported from dependencies module
-# This provides proper dependency injection through the DI container
+# Use delayed import to avoid circular dependency
+def get_mongo_client():
+    """Get mongo client with delayed import to avoid circular dependency"""
+    try:
+        from dependencies import get_mongo_client as _get_mongo_client
+        return _get_mongo_client()
+    except ImportError:
+        return None
 
 
 # Rate limiting
 limiter = Limiter(key_func=get_remote_address)
-router = APIRouter()
+router = APIRouter(tags=["auth"])
 # Note: Rate limiter will be configured when router is included in the main app
 # router.state.limiter = limiter  # APIRouter doesn't have state attribute
 # router.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
@@ -36,8 +38,36 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-# In-memory state storage (use Redis in production)
+# In-memory state storage with expiration (use Redis in production)
+import time
 _oauth_states: Dict[str, Dict] = {}
+
+def clean_expired_states():
+    """Clean up expired OAuth states."""
+    current_time = time.time()
+    expired_keys = [
+        key for key, value in _oauth_states.items()
+        if current_time - value.get("created_at", 0) > 300  # 5 minutes
+    ]
+    for key in expired_keys:
+        del _oauth_states[key]
+
+def is_state_valid(state: str) -> bool:
+    """Check if OAuth state is valid and not expired."""
+    if state not in _oauth_states:
+        return False
+    
+    created_at = _oauth_states[state].get("created_at", 0)
+    return time.time() - created_at < 300  # 5 minutes validity
+
+
+def consume_state(state: str) -> dict:
+    """Consume a state (remove it after use to prevent reuse) and return its data."""
+    if state in _oauth_states:
+        state_data = _oauth_states[state]
+        del _oauth_states[state]  # Remove to prevent reuse
+        return state_data
+    return None
 
 
 @router.get("/auth/google/login")
@@ -59,13 +89,11 @@ async def google_login(request: Request, response: Response):
         state = generate_state()
 
         # Store state with timestamp for validation
+        clean_expired_states()  # Clean up old states first
         _oauth_states[state] = {
-            "created_at": (
-                request.app.state.current_time
-                if hasattr(request.app.state, "current_time")
-                else None
-            ),
+            "created_at": time.time(),
             "ip": get_remote_address(request),
+            "user_agent": request.headers.get("user-agent", ""),
         }
 
         auth_url = google_oauth.generate_auth_url(state)
@@ -74,9 +102,9 @@ async def google_login(request: Request, response: Response):
         response.set_cookie(
             "oauth_state",
             state,
-            max_age=600,  # 10 minutes
+            max_age=300,  # 5 minutes to match server-side expiration
             httponly=True,
-            secure=False,  # Set to True in production
+            secure=False,  # Set to True in production with HTTPS
             samesite="lax",
         )
 
@@ -91,6 +119,14 @@ async def google_login(request: Request, response: Response):
         )
 
 
+# Add redirect endpoint for frontend compatibility
+@router.get("/api/auth/google")
+@limiter.limit("5/minute")
+async def google_login_redirect(request: Request, response: Response):
+    """Redirect to the main Google OAuth login endpoint."""
+    return await google_login(request, response)
+
+
 @router.get("/auth/google/callback")
 @limiter.limit("10/minute")
 async def google_callback(
@@ -102,27 +138,35 @@ async def google_callback(
 ):
     """Handle Google OAuth callback."""
     try:
+        # Clean up expired states first
+        clean_expired_states()
+        
         # Validate state
         stored_state = request.cookies.get("oauth_state")
         
-        # Check if state matches cookie
+        # Check if state matches cookie and is still valid
         if not stored_state or stored_state != state:
             logger.warning(
                 f"Invalid OAuth state from IP: {get_remote_address(request)}"
             )
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid state parameter",
+                detail="Invalid or expired authentication session. Please try logging in again.",
             )
         
-        # Check in-memory state (more lenient for development)
-        if state in _oauth_states:
-            # Clean up state if it exists
-            del _oauth_states[state]
-        else:
+        # Check in-memory state with expiration and consume it
+        state_data = consume_state(state)
+        if not state_data:
             logger.warning(
-                f"OAuth state not found in memory (server may have restarted): {state}"
+                f"OAuth state expired or not found for IP: {get_remote_address(request)}"
             )
+            response.delete_cookie("oauth_state")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Authentication session has expired. Please try logging in again.",
+            )
+        
+        # Clean up cookie
         response.delete_cookie("oauth_state")
 
         # Exchange code for tokens
@@ -131,10 +175,15 @@ async def google_callback(
         except HTTPException as e:
             logger.error(f"Token exchange failed for state {state}: {e.detail}")
             # If it's an invalid_grant error, provide a more user-friendly message
-            if "invalid_grant" in str(e.detail).lower():
+            if "invalid_grant" in str(e.detail).lower() or "authorization code" in str(e.detail).lower():
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Authorization code has expired or been used. Please try logging in again.",
+                )
+            elif "timeout" in str(e.detail).lower():
+                raise HTTPException(
+                    status_code=status.HTTP_408_REQUEST_TIMEOUT,
+                    detail="Request timeout while connecting to Google. Please try again.",
                 )
             raise e
 
