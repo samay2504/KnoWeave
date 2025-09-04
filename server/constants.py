@@ -21,7 +21,6 @@ class Ports:
     # Database Ports
     MONGODB_PORT = 27017
     ARANGODB_PORT = 8529
-    REDIS_PORT = 6379
     
     # External Services
     POSTGRES_PORT = 5432
@@ -45,10 +44,6 @@ class URLs:
     @staticmethod
     def arangodb_url() -> str:
         return f"http://localhost:{Ports.ARANGODB_PORT}"
-    
-    @staticmethod
-    def redis_url() -> str:
-        return f"redis://localhost:{Ports.REDIS_PORT}"
 
 # =============================================================================
 # GOOGLE OAUTH CONFIGURATION - PRODUCTION CONSTANTS

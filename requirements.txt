@@ -13,7 +13,6 @@ httpx>=0.23.0  # Fixed vulnerability CVE-2021-41945
 # Database
 motor==3.7.1
 pymongo==4.14.1
-aioredis==2.0.1
 
 # ArangoDB
 python-arango==8.1.0
@@ -106,9 +105,6 @@ gunicorn==21.2.0
 
 # Logging and Monitoring
 structlog==23.2.0
-
-# Optional: If using Redis for caching/sessions
-# redis==5.0.1
 
 # Optional: If using PostgreSQL instead of MongoDB
 # asyncpg==0.29.0

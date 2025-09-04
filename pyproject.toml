@@ -69,7 +69,6 @@ dependencies = [
     # Utilities
     "aiofiles>=23.2.0",
     "asyncio-mqtt>=0.16.0",
-    "redis>=5.0.0",
     "celery>=5.3.0",
     "python-dateutil>=2.8.2",
     "pytz>=2023.3",
@@ -99,7 +98,6 @@ dev = [
     "pre-commit>=3.6.0",
     
     # Type stubs
-    "types-redis>=4.6.0",
     "types-python-dateutil>=2.8.19",
     "types-pytz>=2023.3.1.1",
 ]

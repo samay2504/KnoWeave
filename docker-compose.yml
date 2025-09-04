@@ -41,21 +41,6 @@ services:
       timeout: 10s
       retries: 5
 
-  redis:
-    image: redis:7.2-alpine
-    container_name: human_ai_redis
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    networks:
-      - human_ai_network
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-
   server:
     build:
       context: .
@@ -69,7 +54,6 @@ services:
       - ARANGO_USER=root
       - ARANGO_PASSWORD=password
       - ARANGO_DATABASE=human_ai_cocreation
-      - REDIS_URL=redis://redis:6379
       - DEBUG=true
     volumes:
       - ./data:/app/data
@@ -80,8 +64,6 @@ services:
       arangodb:
         condition: service_healthy
       mongodb:
-        condition: service_healthy
-      redis:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
@@ -109,7 +91,6 @@ volumes:
   arango_data:
   arango_apps:
   mongo_data:
-  redis_data:
 
 networks:
   human_ai_network:

@@ -46,7 +46,7 @@ except ImportError:
 try:
     from utils.logging_cfg import setup_logging, get_logger
     from dependencies import setup_dependencies, get_container
-    from api.health import get_health_router  # Re-enabled after fixing aioredis compatibility issues
+    from api.health import get_health_router
     try:
         from api.routes import router as api_router
     except ImportError as e:

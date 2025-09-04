@@ -38,7 +38,7 @@ router = APIRouter(tags=["auth"])
 logger = logging.getLogger(__name__)
 
 
-# In-memory state storage with expiration (use Redis in production)
+# In-memory state storage with expiration 
 import time
 _oauth_states: Dict[str, Dict] = {}
 

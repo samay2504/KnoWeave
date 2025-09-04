@@ -18,18 +18,7 @@ try:
 except ImportError:
     MOTOR_AVAILABLE = False
 
-try:
-    # Try importing aioredis with fallback for compatibility issues
-    try:
-        import aioredis
-
-        REDIS_AVAILABLE = True
-    except (ImportError, TypeError) as e:
-        # Handle both missing package and Python 3.12+ compatibility issues
-        REDIS_AVAILABLE = False
-        logger.info(f"Redis not available, using fallback storage: {e}")
-except Exception:
-    REDIS_AVAILABLE = False
+# Redis removed - using only MongoDB, ArangoDB, and JSON fallback
 
 from server_config import ServerConfig
 from utils.schemas import WorkspaceSchema
@@ -50,7 +39,6 @@ class Workspace:
         self.config = config
         self.data: Dict[str, Any] = self._get_default_workspace()
         self.mongo_client: Optional[AsyncIOMotorClient] = None
-        self.redis_client: Optional[Any] = None
         self.last_save_time = 0
         self.checkpoint_interval = 300  # 5 minutes
 
@@ -93,22 +81,12 @@ class Workspace:
                 mongodb_url = self.config.mongodb_url
             elif isinstance(self.config, dict):
                 mongodb_url = self.config.get('MONGODB_URL') or self.config.get('mongodb_url')
-            
-            if hasattr(self.config, 'redis_url'):
-                redis_url = self.config.redis_url
-            elif isinstance(self.config, dict):
-                redis_url = self.config.get('redis_url')
 
             if MOTOR_AVAILABLE and mongodb_url:
                 self.mongo_client = AsyncIOMotorClient(mongodb_url)
                 # Test connection
                 await self.mongo_client.admin.command("ping")
                 logger.info("MongoDB connection established")
-
-            if REDIS_AVAILABLE and redis_url:
-                self.redis_client = await aioredis.from_url(redis_url)
-                await self.redis_client.ping()
-                logger.info("Redis connection established")
 
         except Exception as e:
             logger.warning(f"Database connection failed, using JSON fallback only: {e}")
@@ -367,8 +345,6 @@ class Workspace:
     async def cleanup(self) -> None:
         """Cleanup resources"""
         try:
-            if self.redis_client:
-                await self.redis_client.close()
             if self.mongo_client:
                 self.mongo_client.close()
         except Exception as e:

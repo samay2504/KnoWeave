@@ -82,7 +82,6 @@ class ServerConfig(BaseSettings):
     arango_user: str = Field(default=Database.ARANGO_USERNAME, alias="ARANGO_USER")
     arango_password: str = Field(default="samay2504", alias="ARANGO_PASSWORD")
     arango_database: str = Field(default=Database.ARANGO_DATABASE, alias="ARANGO_DATABASE")
-    redis_url: str = Field(default=URLs.redis_url(), alias="REDIS_URL")
 
     # Google OAuth Configuration
     google_oauth_json_path: Optional[str] = Field(
@@ -379,7 +378,6 @@ class ServerConfig(BaseSettings):
                 "password": self.arango_password,
                 "database": self.arango_database,
             },
-            "redis": {"url": self.redis_url},
         }
 
 

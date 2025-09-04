@@ -64,22 +64,8 @@ services:
     stdin_open: true
     tty: true
 
-  # Optional: Redis for caching/sessions
-  redis:
-    image: redis:7-alpine
-    container_name: human-ai-co-create-redis
-    restart: unless-stopped
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    networks:
-      - human-ai-network
-    command: redis-server --appendonly yes
-
 volumes:
   mongodb_data:
-  redis_data:
 
 networks:
   human-ai-network:

@@ -57,7 +57,7 @@
 **Storage Systems:**
 - ✅ MongoDB primary storage with workspace management
 - ✅ ArangoDB graph storage for knowledge graphs
-- ✅ Redis caching layer with JSON fallback
+- ✅ JSON fallback storage for reliability
 - ✅ Workspace checkpointing and session persistence
 
 **LLM Integration:**
