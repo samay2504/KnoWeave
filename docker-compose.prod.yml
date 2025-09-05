@@ -1,5 +1,4 @@
 # Production compose configuration
-version: '3.8'
 
 services:
   mongodb:

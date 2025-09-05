@@ -43,10 +43,22 @@ except ImportError:
         server_config = ServerConfig()
     PRODUCTION_IMPORTS = False
 
+# Global variables for module availability
+HEALTH_ROUTER_AVAILABLE = False
+get_health_router = None
+
 try:
     from utils.logging_cfg import setup_logging, get_logger
     from dependencies import setup_dependencies, get_container
-    from api.health import get_health_router
+    try:
+        from api.health import get_health_router
+        HEALTH_ROUTER_AVAILABLE = True
+    except ImportError as e:
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Could not import health router: {e}")
+        get_health_router = None
+        HEALTH_ROUTER_AVAILABLE = False
+    
     try:
         from api.routes import router as api_router
     except ImportError as e:
@@ -277,8 +289,21 @@ def create_app() -> "FastAPI":
 
     # Include health endpoints - re-enabled after fixing compatibility issues
     try:
-        app.include_router(get_health_router())
-        logger.info("Health routes loaded successfully")
+        if HEALTH_ROUTER_AVAILABLE and get_health_router is not None:
+            app.include_router(get_health_router())
+            logger.info("Health routes loaded successfully")
+        else:
+            # Create fallback health endpoint
+            @app.get("/health")
+            @app.get("/api/health")
+            async def health_check():
+                """Fallback health check endpoint"""
+                return {
+                    "status": "healthy",
+                    "timestamp": datetime.utcnow().isoformat(),
+                    "service": "human-ai-co-creation"
+                }
+            logger.info("Fallback health endpoint created")
     except Exception as e:
         logger.warning(f"Failed to load health routes: {e}")
 

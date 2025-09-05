@@ -4,13 +4,27 @@ Production-grade server launcher for Human-AI Co-Creation System
 Handles import paths and environment setup properly
 """
 
-import sys
+# CRITICAL: Suppress PyTorch warnings BEFORE any imports
 import os
+import warnings
+os.environ['PYTORCH_DISABLE_WARNING'] = '1'
+os.environ['TORCH_DISABLE_WARNING'] = '1'
+warnings.filterwarnings("ignore", message=".*Redirects are currently not supported.*")
+
+import sys
 from pathlib import Path
 
 # Add server directory to Python path for proper imports
 server_dir = Path(__file__).parent / "server"
 sys.path.insert(0, str(server_dir))
+
+# Initialize production warning suppression
+try:
+    from utils.warning_suppression import initialize_production_environment
+    initialize_production_environment()
+except ImportError:
+    # Fallback basic warning suppression
+    warnings.filterwarnings("ignore", message=".*multiprocessing.*redirects.*")
 
 # Set environment variables for production
 os.environ.setdefault("PYTHONPATH", str(server_dir))
