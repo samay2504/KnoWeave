@@ -1,6 +1,6 @@
 {
   "_metadata": {
-    "version": "1.2.0",
+    "version": "1.0.0",
     "description": "Canonical few-shot examples for 6-agent Human-AI Co-Creation system with comprehensive multi-domain support",
     "updated": "2025-09-04",
     "usage": "PTG selects examples semantically similar to topic using embeddings",

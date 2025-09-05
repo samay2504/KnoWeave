@@ -113,13 +113,36 @@ class PlannerGeneratorAgent:
                 "timestamp": datetime.utcnow().isoformat()
             }
 
-            # Add domain metadata to each branch
+            # Add domain metadata and normalize each branch to ProjectionSchema fields
             topic_family = agent_config.get("topic_family", "unknown")
+            normalized_branches = []
             for branch in llm_response.get("branches", []):
-                if "meta" not in branch:
-                    branch["meta"] = {}
-                branch["meta"]["domain"] = topic_family
-                branch["meta"]["topic_family"] = topic_family
+                # Flatten content if present
+                content = branch.get("content", {})
+                # Map required fields
+                title = content.get("title") or branch.get("title") or "Untitled"
+                paragraph = content.get("paragraph") or branch.get("paragraph") or ""
+                events = content.get("events") or branch.get("events") or []
+                flags = content.get("flags") or branch.get("flags") or {}
+                branch_type = content.get("branch_type") or branch.get("branch_type") or "balanced"
+                score = content.get("score") or branch.get("score")
+                # Add domain metadata
+                meta = branch.get("meta", {})
+                meta["domain"] = topic_family
+                meta["topic_family"] = topic_family
+                # Build normalized branch
+                normalized = {
+                    "title": title,
+                    "paragraph": paragraph,
+                    "events": events,
+                    "flags": flags,
+                    "branch_type": branch_type,
+                    "score": score,
+                    "meta": meta
+                }
+                normalized_branches.append(normalized)
+
+            llm_response["branches"] = normalized_branches
 
             if self.prompt_audit_enabled:
                 self._log_prompt_audit(prompt_payload, llm_response)

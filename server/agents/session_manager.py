@@ -1246,6 +1246,30 @@ class SessionManager:
             from utils.schemas import ProjectionSchema, MetadataSchema, PolicySchema
             
             # Create properly structured workspace data
+            # Accept both dict and PolicySchema for policy
+            _policy = request.policy
+            import logging
+            logger = logging.getLogger("session_manager_policy")
+            logger.debug(f"[SESSION POLICY DEBUG] type: {type(_policy)}, value: {_policy}")
+            # Force conversion to dict or fallback to empty dict
+            try:
+                if _policy is None:
+                    policy_obj = PolicySchema()
+                elif isinstance(_policy, dict):
+                    policy_obj = PolicySchema(**_policy)
+                elif hasattr(_policy, 'model_dump'):
+                    policy_obj = PolicySchema(**_policy.model_dump())
+                elif hasattr(_policy, 'dict'):
+                    policy_obj = PolicySchema(**_policy.dict())
+                elif hasattr(_policy, '__dict__'):
+                    policy_obj = PolicySchema(**_policy.__dict__)
+                else:
+                    logger.warning(f"[SESSION POLICY DEBUG] Unknown policy type, using empty dict. Type: {type(_policy)}")
+                    policy_obj = PolicySchema()
+            except Exception as e:
+                logger.error(f"[SESSION POLICY DEBUG] Exception during policy conversion: {e}. Using empty dict.")
+                policy_obj = PolicySchema()
+
             workspace_data = {
                 "session_id": session_id,
                 "user_id": request.user_id,
@@ -1258,7 +1282,7 @@ class SessionManager:
                 "projections": {},  # Empty dict for now, will be populated with ProjectionSchema objects later
                 "history": [],
                 "graph": {"nodes": [], "edges": []},
-                "policy": PolicySchema(**(request.policy or {})),
+                "policy": policy_obj,
                 "metadata": MetadataSchema(),  # Empty metadata following schema
                 "created_at": datetime.utcnow(),
                 "last_modified": datetime.utcnow()
@@ -1352,40 +1376,49 @@ class SessionManager:
 
     async def save_projections(self, session_id: str, projections: Dict[str, Any]) -> bool:
         """
-        Save projections to a session workspace
-        
-        Args:
-            session_id: Session identifier
-            projections: Dictionary of projections to save
-            
-        Returns:
-            True if successful, False otherwise
+        Save projections to a session workspace, enforcing schema compliance.
+        Each projection is validated and converted to ProjectionSchema, filtering out extra fields.
+        Only valid projections are saved.
         """
         try:
+            from utils.schemas import ProjectionSchema
             # Load the workspace
             workspace = await self.load_workspace(session_id)
             if not workspace:
                 logger.error(f"Cannot save projections: Session {session_id} not found")
                 return False
-            
+            # Validate and filter projections
+            valid_projections = {}
+            for key, proj in projections.items():
+                try:
+                    # Convert to ProjectionSchema (filters/validates fields)
+                    valid_proj = ProjectionSchema(**proj)
+                    valid_projections[key] = valid_proj.dict()
+                except Exception as e:
+                    logger.warning(f"Projection {key} is invalid and will not be saved: {e}")
             # Update the session's active workspace if available
             if session_id in self.active_sessions:
                 active_workspace = self.active_sessions[session_id]["workspace"]
                 if active_workspace:
                     # Update workspace projections
                     current_projections = active_workspace.data.get("projections", {})
-                    current_projections.update(projections)
+                    current_projections.update(valid_projections)
                     active_workspace.update({"projections": current_projections})
-                    
                     # Save the updated workspace
                     await active_workspace.save(force=True)
-                    
+                    # Also persist to workspace manager for snapshot retrieval
+                    try:
+                        from server.workspace import WorkspaceManager
+                        workspace_manager = WorkspaceManager(self.config)
+                        workspace_manager.active_workspaces[session_id] = active_workspace
+                        await workspace_manager.save_workspace(session_id, force=True)
+                        logger.info(f"Persisted workspace for session {session_id} to workspace manager.")
+                    except Exception as e:
+                        logger.error(f"Failed to persist workspace for session {session_id}: {e}")
                     logger.info(f"Saved projections to session {session_id}")
                     return True
-            
             logger.warning(f"Active workspace not found for session {session_id}")
             return False
-            
         except Exception as e:
             logger.error(f"Failed to save projections for session {session_id}: {e}")
             return False

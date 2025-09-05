@@ -103,7 +103,7 @@ class AgentOrchestrator:
 logger = get_api_logger()
 
 # Create router
-router = APIRouter(prefix="/api/v1", tags=["co-creation"])
+router = APIRouter(prefix="/api/session", tags=["co-creation"])
 
 
 # Dependency to get orchestrator
@@ -155,7 +155,7 @@ async def get_orchestrator() -> AgentOrchestrator:
     )
 
 
-@router.post("/sessions", response_model=Dict[str, Any])
+@router.post("/new", response_model=Dict[str, Any])
 async def create_session(
     topic: str = Body(..., description="Topic for the session"),
     mode: str = Body(
@@ -201,7 +201,7 @@ async def create_session(
         )
 
 
-@router.get("/sessions/{session_id}", response_model=Dict[str, Any])
+@router.get("/{session_id}", response_model=Dict[str, Any])
 async def get_session(
     session_id: str, orchestrator: AgentOrchestrator = Depends(get_orchestrator)
 ):
@@ -229,7 +229,7 @@ async def get_session(
         raise HTTPException(status_code=500, detail=f"Failed to get session: {str(e)}")
 
 
-@router.post("/sessions/{session_id}/analyze", response_model=Dict[str, Any])
+@router.post("/{session_id}/analyze", response_model=Dict[str, Any])
 async def analyze_session(
     session_id: str, orchestrator: AgentOrchestrator = Depends(get_orchestrator)
 ):
@@ -270,7 +270,7 @@ async def analyze_session(
         )
 
 
-@router.post("/sessions/{session_id}/generate", response_model=Dict[str, Any])
+@router.post("/{session_id}/generate", response_model=Dict[str, Any])
 async def generate_content(
     session_id: str,
     user_input: str = Body(
@@ -336,7 +336,7 @@ async def generate_content(
         )
 
 
-@router.post("/sessions/{session_id}/verify", response_model=Dict[str, Any])
+@router.post("/{session_id}/verify", response_model=Dict[str, Any])
 async def verify_content(
     session_id: str,
     projections: Optional[Dict[str, Dict[str, Any]]] = Body(default=None),
@@ -381,7 +381,7 @@ async def verify_content(
         )
 
 
-@router.post("/sessions/{session_id}/accept", response_model=Dict[str, Any])
+@router.post("/{session_id}/accept", response_model=Dict[str, Any])
 async def accept_projection(
     session_id: str,
     projection_id: str = Body(..., description="ID of projection to accept"),
@@ -441,7 +441,7 @@ async def accept_projection(
         )
 
 
-@router.post("/sessions/{session_id}/workflow", response_model=Dict[str, Any])
+@router.post("/{session_id}/workflow", response_model=Dict[str, Any])
 async def run_complete_workflow(
     session_id: str,
     user_input: str = Body(default="", description="Optional user input"),
@@ -465,7 +465,7 @@ async def run_complete_workflow(
         raise HTTPException(status_code=500, detail=f"Failed to run workflow: {str(e)}")
 
 
-@router.get("/sessions/{session_id}/graph", response_model=Dict[str, Any])
+@router.get("/{session_id}/graph", response_model=Dict[str, Any])
 async def get_knowledge_graph(
     session_id: str, orchestrator: AgentOrchestrator = Depends(get_orchestrator)
 ):
@@ -511,7 +511,7 @@ async def get_knowledge_graph(
         )
 
 
-@router.delete("/sessions/{session_id}", response_model=Dict[str, Any])
+@router.delete("/{session_id}", response_model=Dict[str, Any])
 async def delete_session(
     session_id: str, orchestrator: AgentOrchestrator = Depends(get_orchestrator)
 ):

@@ -1028,7 +1028,7 @@ def create_app() -> "FastAPI":
             raise HTTPException(status_code=500, detail=str(e))
 
     @app.post(
-        "/api/session/{session_id}/invoke_suggest", response_model=SuggestionsResponse
+    "/api/session/{session_id}/invoke_suggest", response_model=SuggestionsResponse
     )
     async def invoke_suggestions(session_id: str, request: SuggestRequest):
         """Generate writing suggestions for a session"""
@@ -1176,9 +1176,7 @@ def create_app() -> "FastAPI":
             # 4. Verify branches with PTG-generated prompts
             verified_branches = []
             verifications = []
-            logger.warning(f"🔍 Processing {len(planner_result.get('branches', []))} branches from planner")
-            for i, branch in enumerate(planner_result.get("branches", [])):
-                logger.warning(f"🔍 Processing branch {i}: {list(branch.keys()) if isinstance(branch, dict) else type(branch)}")
+            for branch in planner_result.get("branches", []):
                 if hasattr(session_manager, 'ptg') and session_manager.ptg:
                     try:
                         verifier_prompt = session_manager.ptg.generate_canonical_prompt(
@@ -1196,18 +1194,17 @@ def create_app() -> "FastAPI":
                             workspace_data,
                             {
                                 "session_id": session_id,
-                                "content": branch.get("content", {}) if isinstance(branch, dict) else str(branch), 
+                                "content": branch.get("content", {}) if isinstance(branch, dict) else str(branch),
                                 "branch_data": branch,
                                 "prompt_payload": verifier_prompt
                             }
                         )
-                    except Exception as e:
-                        logger.warning(f"PTG failed for verifier: {e}")
+                    except Exception:
                         verification = await agents["verifier"].invoke(
                             workspace_data,
                             {
                                 "session_id": session_id,
-                                "content": branch.get("content", {}) if isinstance(branch, dict) else str(branch), 
+                                "content": branch.get("content", {}) if isinstance(branch, dict) else str(branch),
                                 "branch_data": branch
                             }
                         )
@@ -1216,17 +1213,15 @@ def create_app() -> "FastAPI":
                         workspace_data,
                         {
                             "session_id": session_id,
-                            "content": branch.get("content", {}) if isinstance(branch, dict) else str(branch), 
+                            "content": branch.get("content", {}) if isinstance(branch, dict) else str(branch),
                             "branch_data": branch
                         }
                     )
                 verifications.append(verification)
                 verified_branches.append(branch)
-                logger.warning(f"🔍 Added branch {i} to verified_branches, total: {len(verified_branches)}")
-
-            logger.warning(f"🔍 Final verified_branches count: {len(verified_branches)}")
 
             # 5. Score and rank with PTG-generated prompt
+            workspace_data["branches"] = verified_branches
             if hasattr(session_manager, 'ptg') and session_manager.ptg:
                 try:
                     evaluator_prompt = session_manager.ptg.generate_canonical_prompt(
@@ -1241,25 +1236,21 @@ def create_app() -> "FastAPI":
                         workspace_data,
                         {
                             "session_id": session_id,
-                            "branches": verified_branches,
                             "prompt_payload": evaluator_prompt
                         }
                     )
-                except Exception as e:
-                    logger.warning(f"PTG failed for evaluator: {e}")
+                except Exception:
                     evaluation = await agents["evaluator"].invoke(
                         workspace_data,
                         {
-                            "session_id": session_id,
-                            "branches": verified_branches
+                            "session_id": session_id
                         }
                     )
             else:
                 evaluation = await agents["evaluator"].invoke(
                     workspace_data,
                     {
-                        "session_id": session_id,
-                        "branches": verified_branches
+                        "session_id": session_id
                     }
                 )
 
@@ -1276,27 +1267,35 @@ def create_app() -> "FastAPI":
             # Convert branches to ProjectionSchema format
             formatted_projections = {}
             for i, branch in enumerate(verified_branches[:max_branches]):
-                # Extract the actual content structure
-                content = branch.get("content", {})
+                # Map required ProjectionSchema fields
+                content = branch.get("content")
+                # Flatten title if missing
+                title = branch.get("title")
+                if not title and isinstance(content, dict):
+                    title = content.get("title")
+                # Accept both 'content' as dict or str; if dict, try 'paragraph' or join values
                 if isinstance(content, dict):
-                    formatted_projections[f"branch_{i}"] = {
-                        "title": content.get("title", f"Branch {i+1}"),
-                        "paragraph": content.get("paragraph", content.get("content", "No content available")),
-                        "events": content.get("events", []),
-                        "flags": content.get("flags", {}),
-                        "branch_type": "balanced",
-                        "score": branch.get("score_estimate", 0.0)
-                    }
+                    paragraph = content.get("paragraph") or content.get("text") or ""
+                elif isinstance(content, str):
+                    paragraph = content
                 else:
-                    # Fallback for non-dict content
-                    formatted_projections[f"branch_{i}"] = {
-                        "title": f"Branch {i+1}",
-                        "paragraph": str(content) if content else "No content available",
-                        "events": [],
-                        "flags": {},
-                        "branch_type": "balanced",
-                        "score": branch.get("score_estimate", 0.0)
-                    }
+                    paragraph = ""
+                events = branch.get("events", [])
+                flags = branch.get("flags", {})
+                branch_type = branch.get("branch_type", "balanced")
+                score = branch.get("score")
+                # Only allow schema-compliant fields
+                formatted = {
+                    "title": title,
+                    "paragraph": paragraph,
+                    "events": events,
+                    "flags": flags,
+                    "branch_type": branch_type,
+                    "score": score
+                }
+                # Remove any None values (optional, for strictness)
+                formatted = {k: v for k, v in formatted.items() if v is not None}
+                formatted_projections[f"branch_{i}"] = formatted
 
             return SuggestionsResponse(
                 session_id=session_id,
@@ -1312,7 +1311,7 @@ def create_app() -> "FastAPI":
             logger.error(f"Failed to generate suggestions: {e}")
             raise HTTPException(status_code=500, detail=str(e))
 
-    @app.post("/api/session/{session_id}/accept_branch", response_model=SessionResponse)
+    @app.post("/api/session/{session_id}/accept", response_model=SessionResponse)
     async def accept_branch(session_id: str, request: AcceptBranchRequest):
         """Accept a suggested branch and update the story"""
         try:

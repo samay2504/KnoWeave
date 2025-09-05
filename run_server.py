@@ -46,11 +46,41 @@ sys.path.insert(0, str(server_dir))
 
 # Initialize production warning suppression
 try:
-    from utils.warning_suppression import initialize_production_environment
+
+    from server.utils.warning_suppression import initialize_production_environment
     initialize_production_environment()
 except ImportError:
-    # Fallback basic warning suppression
-    warnings.filterwarnings("ignore", message=".*multiprocessing.*redirects.*")
+    # Fallback: robust local warning suppression and logging config
+    def suppress_production_warnings():
+        os.environ['PYTORCH_DISABLE_WARNING'] = '1'
+        os.environ['TORCH_DISABLE_WARNING'] = '1'
+        os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+        warnings.filterwarnings("ignore", category=UserWarning, module="torch")
+        warnings.filterwarnings("ignore", message=".*Redirects are currently not supported.*")
+        warnings.filterwarnings("ignore", message=".*NOTE: Redirects.*")
+        warnings.filterwarnings("ignore", message=".*multiprocessing.*redirects.*")
+        if os.getenv('ENVIRONMENT', '').lower() == 'production':
+            warnings.filterwarnings("ignore", category=DeprecationWarning)
+            warnings.filterwarnings("ignore", category=PendingDeprecationWarning)
+        warnings.filterwarnings("ignore", module="transformers")
+        warnings.filterwarnings("ignore", module="huggingface_hub")
+        warnings.filterwarnings("ignore", module="langchain")
+        import logging
+        torch_logger = logging.getLogger('torch')
+        torch_logger.setLevel(logging.ERROR)
+
+    def setup_production_logging():
+        import logging
+        logging.getLogger('urllib3').setLevel(logging.WARNING)
+        logging.getLogger('requests').setLevel(logging.WARNING)
+        logging.getLogger('httpx').setLevel(logging.WARNING)
+        logging.getLogger('transformers').setLevel(logging.WARNING)
+        logging.getLogger('sentence_transformers').setLevel(logging.WARNING)
+        logging.getLogger('torch').setLevel(logging.ERROR)
+        logging.getLogger('torch.distributed').setLevel(logging.ERROR)
+
+    suppress_production_warnings()
+    setup_production_logging()
 
 # Set environment variables for production
 os.environ.setdefault("PYTHONPATH", str(server_dir))
@@ -58,24 +88,23 @@ os.environ.setdefault("PYTHONPATH", str(server_dir))
 if __name__ == "__main__":
     try:
         print("🚀 Starting Human-AI Co-Creation Server...")
-        
         # Change to server directory for consistent imports
         os.chdir(str(server_dir))
-        
+
         # Import and run the server
-        from app import app
+        from server.app import app
         import uvicorn
-        
+
         # Get configuration
         port = int(os.getenv("BACKEND_PORT", 8000))
         host = os.getenv("SERVER_HOST", "0.0.0.0")
         debug = os.getenv("DEBUG", "false").lower() == "true"
-        
+
         print(f"📡 Server starting on http://{host}:{port}")
         print(f"🔧 Debug mode: {debug}")
         print(f"📊 Health Check: http://localhost:{port}/api/status")
         print(f"🔍 API Docs: http://localhost:{port}/docs")
-        
+
         # Start the server with reload disabled for production stability
         uvicorn.run(
             app,
@@ -85,7 +114,6 @@ if __name__ == "__main__":
             access_log=True,
             log_level="info"
         )
-        
     except Exception as e:
         print(f"❌ Failed to start server: {e}")
         import traceback

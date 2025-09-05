@@ -83,7 +83,7 @@ export const useAIMode = (initialMode = 'balanced') => {
         context_chunks: options.context_chunks || [],
       };
 
-      const response = await fetch(`${API_BASE}/ptg/generate`, {
+  const response = await fetch(`${API_BASE}/ptg/generate`.replace('/api/ptg', '/api/ptg'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -202,7 +202,7 @@ export const useSession = () => {
    */
   const createSession = async (userData = {}) => {
     try {
-      const response = await fetch(`${API_BASE}/session/create`, {
+  const response = await fetch(`${API_BASE}/session/new`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

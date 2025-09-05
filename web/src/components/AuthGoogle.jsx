@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-
-const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
+import { BACKEND_PORT } from '../config/constants';
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || `http://localhost:${BACKEND_PORT}`;
 
 const AuthGoogle = ({ onAuthStart, onAuthComplete, onAuthError }) => {
   const [isLoading, setIsLoading] = useState(false);
@@ -15,15 +15,12 @@ const AuthGoogle = ({ onAuthStart, onAuthComplete, onAuthError }) => {
       setIsOffline(false);
       setError(null);
     };
-    
     const handleOffline = () => {
       setIsOffline(true);
       setError('You appear to be offline. Please check your internet connection.');
     };
-
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
-
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
@@ -48,69 +45,55 @@ const AuthGoogle = ({ onAuthStart, onAuthComplete, onAuthError }) => {
 
     setIsLoading(true);
     setError(null);
-    
-    try {
-      onAuthStart?.();
-      
-      // Check if server is reachable
+    let attempts = 0;
+    const maxAttempts = maxRetries;
+    while (attempts < maxAttempts) {
       try {
-        const healthResponse = await fetch(`${API_BASE_URL}/health`, { 
-          method: 'GET',
-          timeout: 5000 
-        });
-        
+        onAuthStart?.();
+        // Check if server is reachable
+        const healthResponse = await fetch(`${API_BASE_URL}/health`, { method: 'GET' });
         if (!healthResponse.ok) {
           throw new Error('Server health check failed');
         }
-      } catch (healthError) {
-        console.warn('Health check failed:', healthError);
-        setError('Cannot connect to authentication server. Please try again later.');
-        return;
-      }
-
-      // Initiate Google OAuth flow
-      const response = await fetch(`${API_BASE_URL}/api/auth/google`, {
-        method: 'GET',
-        credentials: 'include',
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json'
+        // Initiate Google OAuth flow
+        const response = await fetch(`${API_BASE_URL}/api/auth/google`, {
+          method: 'GET',
+          credentials: 'include',
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          }
+        });
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => null);
+          throw new Error(errorData?.detail || `Authentication failed (${response.status})`);
         }
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => null);
-        throw new Error(errorData?.detail || `Authentication failed (${response.status})`);
+        const data = await response.json();
+        if (data.auth_url) {
+          window.location.href = data.auth_url;
+          return;
+        } else {
+          throw new Error('No authentication URL received from server');
+        }
+      } catch (err) {
+        attempts++;
+        let errorMessage = 'Authentication failed. Please try again.';
+        if (err.name === 'TypeError' && err.message.includes('fetch')) {
+          errorMessage = 'Cannot connect to authentication server. Please check your connection and try again.';
+        } else if (err.message.includes('timeout') || err.message.includes('ECONNREFUSED')) {
+          errorMessage = 'Connection timeout. Please check if the server is running and try again.';
+        } else if (err.message) {
+          errorMessage = err.message;
+        }
+        setError(errorMessage);
+        setRetryCount(prev => prev + 1);
+        onAuthError?.(err);
+        if (attempts < maxAttempts) {
+          await new Promise(res => setTimeout(res, 1000 * attempts)); // Exponential backoff
+        }
+      } finally {
+        setIsLoading(false);
       }
-
-      const data = await response.json();
-      
-      if (data.auth_url) {
-        // Redirect to Google OAuth
-        window.location.href = data.auth_url;
-      } else {
-        throw new Error('No authentication URL received from server');
-      }
-      
-    } catch (err) {
-      console.error('Authentication error:', err);
-      
-      let errorMessage = 'Authentication failed. Please try again.';
-      
-      // Handle specific error types
-      if (err.name === 'TypeError' && err.message.includes('fetch')) {
-        errorMessage = 'Cannot connect to authentication server. Please check your connection and try again.';
-      } else if (err.message.includes('timeout') || err.message.includes('ECONNREFUSED')) {
-        errorMessage = 'Connection timeout. Please check if the server is running and try again.';
-      } else if (err.message) {
-        errorMessage = err.message;
-      }
-      
-      setError(errorMessage);
-      setRetryCount(prev => prev + 1);
-      onAuthError?.(err);
-    } finally {
-      setIsLoading(false);
     }
   };
 
