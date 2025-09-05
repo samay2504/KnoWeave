@@ -82,15 +82,17 @@ class EvaluatorAgent:
             
             llm_response = await self.llm_provider.generate(
                 prompt=prompt_payload["prompt"],
-                temperature=prompt_payload["temperature"],
-                max_tokens=prompt_payload["max_tokens"],
-                schema=prompt_payload["schema"]
+                temperature=prompt_payload.get("temperature", 0.3),
+                max_tokens=prompt_payload.get("max_tokens", 1000),
+                schema=prompt_payload.get("schema"),
+                session_id=workspace.get("session_id", "unknown"),
+                agent="evaluator"
             )
 
             # Add call metadata
             llm_response["call_metadata"] = {
-                "provider": self.llm_provider.provider_name,
-                "model": self.llm_provider.model_name,
+                "provider": getattr(self.llm_provider, 'current_provider', 'unknown'),
+                "model": getattr(self.llm_provider, 'name', 'unknown'),
                 "prompt_hash": hash(prompt_payload["prompt"]),
                 "timestamp": datetime.utcnow().isoformat()
             }

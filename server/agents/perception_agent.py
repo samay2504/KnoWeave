@@ -340,9 +340,17 @@ class PerceptionAgent:
         if not self.initialized:
             await self.initialize()
 
-        # Extract text from workspace (blueprint format)
-        text = workspace.get("topic_content", "")
+        # Extract text from multiple possible sources
+        text = (
+            workspace.get("topic_content", "") or 
+            workspace.get("content", "") or 
+            agent_config.get("content", "") or
+            agent_config.get("input_text", "") or
+            workspace.get("input_text", "")
+        )
+        
         if not text.strip():
+            logger.debug(f"Perception agent: No text found in workspace keys: {list(workspace.keys())} or agent_config keys: {list(agent_config.keys())}")
             return self._empty_analysis()
 
         try:

@@ -768,6 +768,54 @@ class AsyncLLMProvider:
             # Return fallback response
             return "LLM invocation failed. Please check your configuration."
 
+    async def generate(self, prompt: str, temperature: float = 0.7, max_tokens: int = 1000, schema: Dict[str, Any] = None, **kwargs) -> Dict[str, Any]:
+        """
+        Generate response from LLM using PTG payload format.
+        This is the method that agents should call with full PTG payloads.
+        """
+        try:
+            # Build the full prompt with schema instructions if provided
+            full_prompt = prompt
+            if schema:
+                schema_str = json.dumps(schema, indent=2) if isinstance(schema, dict) else str(schema)
+                full_prompt += f"\n\nOUTPUT_SCHEMA:\n{schema_str}\n\nINSTRUCTIONS: Return only valid JSON matching the schema above. No explanatory text."
+            
+            # Get the response text from the LLM
+            response_text = await self.invoke(full_prompt, kwargs.get("session_id", ""), kwargs.get("agent", ""))
+            
+            # Try to parse as JSON if schema was provided
+            if schema:
+                try:
+                    # Extract JSON from response if it's wrapped in text
+                    import re
+                    json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+                    if json_match:
+                        parsed_response = json.loads(json_match.group())
+                        return parsed_response
+                    else:
+                        # Try parsing the whole response as JSON
+                        return json.loads(response_text)
+                except json.JSONDecodeError:
+                    # If JSON parsing fails, return a structured fallback
+                    return {
+                        "error": "Failed to parse JSON response",
+                        "raw_response": response_text,
+                        "schema_requested": schema
+                    }
+            else:
+                # Return the text response wrapped in a dict for consistency
+                return {
+                    "content": response_text,
+                    "raw_response": response_text
+                }
+                
+        except Exception as e:
+            logger.error(f"LLM generation failed: {e}")
+            return {
+                "error": f"Generation failed: {str(e)}",
+                "fallback": True
+            }
+
     @property
     def name(self) -> str:
         """Get the name of the current LLM provider."""

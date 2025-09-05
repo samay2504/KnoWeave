@@ -361,6 +361,18 @@ class AgentPipelineTestSuite:
         
         # Test 3: WebSocket endpoint (if available)
         try:
+            # First check the info endpoint
+            response = await client.get(f"{self.base_url}/ws/info")
+            if response.status_code == 200:
+                ws_info = response.json()
+                print(f"✅ WebSocket Info: {response.status_code}")
+                print(f"   WebSocket URL: {ws_info.get('websocket_url', 'Unknown')}")
+                print(f"   Status: {ws_info.get('status', 'Unknown')}")
+                print(f"   Supported Types: {len(ws_info.get('supported_message_types', []))}")
+            else:
+                print(f"⚠️  WebSocket Info: {response.status_code}")
+            
+            # Test regular HTTP request to WebSocket endpoint (should fail properly)
             response = await client.get(f"{self.base_url}/ws")
             # WebSocket endpoints typically return 400 for non-WS requests
             if response.status_code in [400, 426]:

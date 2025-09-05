@@ -100,11 +100,21 @@ class VerifierAgent:
         Validates content quality, consistency, and constraints.
         Now prompt-driven and supports domain-specific checks.
         """
-        logger.info(f"Verifying content for session {workspace.get('session_id', 'unknown')}")
+        session_id = workspace.get('session_id', 'unknown')
+        logger.debug(f"Verifying content for session {session_id}")
 
         prompt_payload = agent_config.get("prompt_payload")
         if not prompt_payload or not self.llm_provider:
-            logger.error("Verifier agent requires a prompt payload and LLM provider.")
+            # Only log warning once per session to reduce noise
+            if not hasattr(self, '_fallback_sessions'):
+                self._fallback_sessions = set()
+            
+            if session_id not in self._fallback_sessions:
+                logger.warning(f"Verifier agent using fallback mode (session: {session_id})")
+                self._fallback_sessions.add(session_id)
+            else:
+                logger.debug(f"Verifier agent continuing in fallback mode (session: {session_id})")
+            
             # Fallback to a basic local check if LLM fails
             return await self._run_local_verification(workspace)
 
@@ -113,15 +123,17 @@ class VerifierAgent:
             
             llm_response = await self.llm_provider.generate(
                 prompt=prompt_payload["prompt"],
-                temperature=prompt_payload["temperature"],
-                max_tokens=prompt_payload["max_tokens"],
-                schema=prompt_payload["schema"]
+                temperature=prompt_payload.get("temperature", 0.3),
+                max_tokens=prompt_payload.get("max_tokens", 1000),
+                schema=prompt_payload.get("schema"),
+                session_id=workspace.get("session_id", "unknown"),
+                agent="verifier"
             )
 
             # Add call metadata
             llm_response["call_metadata"] = {
-                "provider": self.llm_provider.provider_name,
-                "model": self.llm_provider.model_name,
+                "provider": getattr(self.llm_provider, 'current_provider', 'unknown'),
+                "model": getattr(self.llm_provider, 'name', 'unknown'),
                 "prompt_hash": hash(prompt_payload["prompt"]),
                 "timestamp": datetime.utcnow().isoformat()
             }

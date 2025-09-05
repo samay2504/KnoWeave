@@ -152,7 +152,57 @@ async def lifespan(app: "FastAPI"):
             # Store session_manager in app state for global access
             app.state.session_manager = session_manager
 
-            # Initialize agents
+            # Initialize agents with production configuration and LLM provider assignment
+            from utils.production_agent_config import AgentInitializationManager
+            
+            agent_init_manager = AgentInitializationManager(config_dict)
+            
+            # Get LLM provider from multiple sources with fallback priority
+            llm_provider = None
+            
+            # Priority 1: Try to get from dependency container (most reliable)
+            try:
+                container = getattr(app.state, 'container', None)
+                if container and hasattr(container, 'llm_provider'):
+                    container_llm = container.llm_provider()
+                    if container_llm:
+                        llm_provider = container_llm
+                        logger.info("✅ LLM provider obtained from dependency container")
+            except Exception as e:
+                logger.debug(f"Could not get LLM provider from container: {e}")
+            
+            # Priority 2: Try session manager as fallback
+            if not llm_provider:
+                if hasattr(session_manager, 'llm_provider'):
+                    llm_provider = session_manager.llm_provider
+                    if llm_provider:
+                        logger.info("✅ LLM provider obtained from session manager")
+                elif hasattr(session_manager, 'ptg') and hasattr(session_manager.ptg, 'llm_provider'):
+                    llm_provider = session_manager.ptg.llm_provider
+                    if llm_provider:
+                        logger.info("✅ LLM provider obtained from PTG")
+            
+            # Priority 3: Try direct import as last resort
+            if not llm_provider:
+                try:
+                    from llm_provider import AsyncLLMProvider
+                    llm_config = {
+                        'providers': ['huggingface', 'gemini', 'openai', 'groq'],
+                        'model': 'gpt-3.5-turbo',
+                        'temperature': 0.7,
+                        'max_tokens': 1000
+                    }
+                    llm_provider = AsyncLLMProvider(llm_config)
+                    await llm_provider.initialize()
+                    logger.info("✅ LLM provider created directly")
+                except Exception as e:
+                    logger.warning(f"Could not create LLM provider directly: {e}")
+            
+            if not llm_provider:
+                logger.warning("⚠️  No LLM provider available - agents will use fallback mode")
+            else:
+                logger.info(f"🎯 LLM provider ready: {type(llm_provider).__name__}")
+            
             agents = {
                 "perception": PerceptionAgent(config_dict),
                 "planner": PlannerGeneratorAgent(config_dict),
@@ -161,15 +211,17 @@ async def lifespan(app: "FastAPI"):
                 "evaluator": EvaluatorAgent(config_dict),
             }
 
-            # Initialize all agents that have an initialize method
-            for agent_name, agent in agents.items():
-                if hasattr(agent, 'initialize') and callable(getattr(agent, 'initialize')):
-                    await agent.initialize()
-                    logger.info(f"Initialized {agent_name} agent")
-                else:
-                    logger.info(f"Initialized {agent_name} agent (no initialization required)")
-
-            logger.info("All services initialized successfully")
+            # Initialize all agents with production settings and LLM provider
+            agents = await agent_init_manager.initialize_agents(agents, llm_provider)
+            
+            # Assign LLM provider directly to agents to reduce warnings
+            if llm_provider:
+                for agent_name, agent in agents.items():
+                    if hasattr(agent, 'llm_provider'):
+                        agent.llm_provider = llm_provider
+                        logger.info(f"LLM provider assigned to {agent_name} agent")
+            
+            logger.info("All services initialized successfully with production configuration")
 
             yield
 
@@ -356,7 +408,7 @@ def create_app() -> "FastAPI":
             
             data = await request.json()
             session_id = data.get("session_id")
-            content = data.get("content", "")
+            content = data.get("content", "") or data.get("input_text", "")
             
             if not session_id:
                 raise HTTPException(status_code=400, detail="session_id required")
@@ -380,9 +432,14 @@ def create_app() -> "FastAPI":
                 raw_workspace = await session_manager.workspace_manager.get_workspace(session_id)
                 workspace_data = raw_workspace.data if hasattr(raw_workspace, 'data') else {}
             
+            # Add content to workspace data for perception agent
+            workspace_data["content"] = content
+            workspace_data["input_text"] = content
+            
             result = await agents["perception"].invoke(workspace_data, {
                 "session_id": session_id,
                 "content": content,
+                "input_text": content,
                 "mode": data.get("mode", "balanced")
             })
             
@@ -399,7 +456,9 @@ def create_app() -> "FastAPI":
 
     @app.post("/api/agents/planner/generate")
     async def planner_generate(request: Request):
-        """Direct planner agent generation"""
+        """Direct planner agent generation with production-grade error handling"""
+        from utils.agent_fallbacks import AgentFallbackHandler, ProductionAgentValidator
+        
         try:
             if not agents.get("planner"):
                 raise HTTPException(status_code=500, detail="Planner agent not available")
@@ -413,56 +472,84 @@ def create_app() -> "FastAPI":
             # Get session_manager from app state
             session_manager = getattr(app.state, 'session_manager', None)
             if not session_manager:
-                raise HTTPException(status_code=500, detail="Session manager not available")
+                logger.error("Session manager not available for planner agent")
+                # Return fallback response instead of failing
+                fallback_result = AgentFallbackHandler.create_fallback_response(
+                    "planner", session_id, "Session manager unavailable"
+                )
+                return {
+                    "status": "fallback",
+                    "session_id": session_id,
+                    "result": fallback_result,
+                    "timestamp": datetime.now().isoformat()
+                }
             
-            # Load workspace
+            # Load workspace with validation
             workspace = await session_manager.load_workspace(session_id)
             if not workspace:
+                logger.warning(f"Session {session_id} not found for planner agent")
                 raise HTTPException(status_code=404, detail="Session not found")
             
-            # Convert workspace to proper format, handling validation errors gracefully
-            try:
-                if hasattr(workspace, 'to_dict'):
-                    workspace_data = workspace.to_dict()
-                elif hasattr(workspace, 'model_dump'):
-                    workspace_data = workspace.model_dump()
-                else:
-                    workspace_data = workspace
-            except Exception as e:
-                logger.warning(f"Workspace conversion failed, using raw data: {e}")
-                # Fallback: get raw workspace data
-                raw_workspace = await session_manager.workspace_manager.get_workspace(session_id)
-                workspace_data = raw_workspace.data if hasattr(raw_workspace, 'data') else {}
+            # Convert workspace to proper format with production validation
+            workspace_data = ProductionAgentValidator.validate_workspace_data(workspace)
             
-            # Generate prompt payload using PTG through Session Manager
-            prompt_payload = session_manager.ptg.generate_canonical_prompt(
-                agent_name="planner",
-                session_id=session_id,
-                topic=data.get("topic", "general"),
-                topic_descriptor=data.get("topic_descriptor", "General content generation"),
-                input_data=data,
-                mode=data.get("mode", "balanced"),
-                context_chunks=[],
-                user_constraints=data.get("constraints", {})
-            )
-            
-            result = await agents["planner"].invoke(workspace_data, {
+            # Create agent configuration with enhanced fallbacks
+            agent_config = {
                 "session_id": session_id,
                 "max_branches": data.get("max_branches", 3),
-                "mode": data.get("mode", "balanced"),
-                "prompt_payload": prompt_payload
-            })
+                "mode": data.get("mode", "balanced")
+            }
+            
+            # Generate prompt payload with fallback handling
+            try:
+                prompt_payload = session_manager.ptg.generate_canonical_prompt(
+                    agent_name="planner",
+                    session_id=session_id,
+                    topic=data.get("topic", "general"),
+                    topic_descriptor=data.get("topic_descriptor", "General content generation"),
+                    input_data=data,
+                    mode=data.get("mode", "balanced"),
+                    context_chunks=[],
+                    user_constraints=data.get("constraints", {})
+                )
+                agent_config["prompt_payload"] = prompt_payload
+            except Exception as e:
+                logger.warning(f"Failed to generate prompt payload for planner: {e}")
+                # Use fallback prompt payload
+                content = data.get("content", workspace_data.get("content", ""))
+                agent_config = AgentFallbackHandler.enhance_agent_config(
+                    agent_config, "planner", content
+                )
+            
+            # Invoke agent with enhanced configuration
+            result = await agents["planner"].invoke(workspace_data, agent_config)
+            
+            # Sanitize response for production
+            sanitized_result = ProductionAgentValidator.sanitize_agent_response(result, "planner")
             
             return {
                 "status": "success",
                 "session_id": session_id,
-                "result": result,
+                "result": sanitized_result,
                 "timestamp": datetime.now().isoformat()
             }
             
         except Exception as e:
             logger.error(f"Planner generation failed: {e}")
-            raise HTTPException(status_code=500, detail=str(e))
+            
+            # Return structured fallback response instead of generic HTTP error
+            from utils.agent_fallbacks import AgentFallbackHandler
+            fallback_result = AgentFallbackHandler.create_fallback_response(
+                "planner", session_id or "unknown", f"Processing error: {str(e)}"
+            )
+            
+            return {
+                "status": "error_with_fallback",
+                "session_id": session_id or "unknown", 
+                "result": fallback_result,
+                "error": str(e),
+                "timestamp": datetime.now().isoformat()
+            }
 
     @app.post("/api/agents/graph/query")
     async def graph_query(request: Request):
@@ -517,7 +604,9 @@ def create_app() -> "FastAPI":
 
     @app.post("/api/agents/verifier/validate")
     async def verifier_validate(request: Request):
-        """Direct verifier agent validation"""
+        """Direct verifier agent validation with production-grade error handling"""
+        from utils.agent_fallbacks import AgentFallbackHandler, ProductionAgentValidator
+        
         try:
             if not agents.get("verifier"):
                 raise HTTPException(status_code=500, detail="Verifier agent not available")
@@ -532,56 +621,83 @@ def create_app() -> "FastAPI":
             # Get session_manager from app state
             session_manager = getattr(app.state, 'session_manager', None)
             if not session_manager:
-                raise HTTPException(status_code=500, detail="Session manager not available")
+                logger.error("Session manager not available for verifier agent")
+                # Return fallback response instead of failing
+                fallback_result = AgentFallbackHandler.create_fallback_response(
+                    "verifier", session_id, "Session manager unavailable"
+                )
+                return {
+                    "status": "fallback",
+                    "session_id": session_id,
+                    "result": fallback_result,
+                    "timestamp": datetime.now().isoformat()
+                }
             
-            # Load workspace
+            # Load workspace with validation
             workspace = await session_manager.load_workspace(session_id)
             if not workspace:
+                logger.warning(f"Session {session_id} not found for verifier agent")
                 raise HTTPException(status_code=404, detail="Session not found")
             
-            # Convert workspace to proper format, handling validation errors gracefully
-            try:
-                if hasattr(workspace, 'to_dict'):
-                    workspace_data = workspace.to_dict()
-                elif hasattr(workspace, 'model_dump'):
-                    workspace_data = workspace.model_dump()
-                else:
-                    workspace_data = workspace
-            except Exception as e:
-                logger.warning(f"Workspace conversion failed, using raw data: {e}")
-                # Fallback: get raw workspace data
-                raw_workspace = await session_manager.workspace_manager.get_workspace(session_id)
-                workspace_data = raw_workspace.data if hasattr(raw_workspace, 'data') else {}
+            # Convert workspace to proper format with production validation
+            workspace_data = ProductionAgentValidator.validate_workspace_data(workspace)
             
-            # Generate prompt payload using PTG through Session Manager
-            prompt_payload = session_manager.ptg.generate_canonical_prompt(
-                agent_name="verifier",
-                session_id=session_id,
-                topic=data.get("topic", "general"),
-                topic_descriptor=data.get("topic_descriptor", "Content verification"),
-                input_data={"content": content, **data},
-                mode=data.get("mode", "balanced"),
-                context_chunks=[],
-                user_constraints=data.get("constraints", {})
-            )
-            
-            result = await agents["verifier"].invoke(workspace_data, {
+            # Create agent configuration with enhanced fallbacks
+            agent_config = {
                 "session_id": session_id,
                 "content": content,
-                "branch_data": data.get("branch_data", {}),
-                "prompt_payload": prompt_payload
-            })
+                "branch_data": data.get("branch_data", {})
+            }
+            
+            # Generate prompt payload with fallback handling
+            try:
+                prompt_payload = session_manager.ptg.generate_canonical_prompt(
+                    agent_name="verifier",
+                    session_id=session_id,
+                    topic=data.get("topic", "general"),
+                    topic_descriptor=data.get("topic_descriptor", "Content verification"),
+                    input_data={"content": content, **data},
+                    mode=data.get("mode", "balanced"),
+                    context_chunks=[],
+                    user_constraints=data.get("constraints", {})
+                )
+                agent_config["prompt_payload"] = prompt_payload
+            except Exception as e:
+                logger.warning(f"Failed to generate prompt payload for verifier: {e}")
+                # Use fallback prompt payload
+                agent_config = AgentFallbackHandler.enhance_agent_config(
+                    agent_config, "verifier", content
+                )
+            
+            # Invoke agent with enhanced configuration
+            result = await agents["verifier"].invoke(workspace_data, agent_config)
+            
+            # Sanitize response for production
+            sanitized_result = ProductionAgentValidator.sanitize_agent_response(result, "verifier")
             
             return {
                 "status": "success",
                 "session_id": session_id,
-                "result": result,
+                "result": sanitized_result,
                 "timestamp": datetime.now().isoformat()
             }
             
         except Exception as e:
             logger.error(f"Verifier validation failed: {e}")
-            raise HTTPException(status_code=500, detail=str(e))
+            
+            # Return structured fallback response instead of generic HTTP error
+            from utils.agent_fallbacks import AgentFallbackHandler
+            fallback_result = AgentFallbackHandler.create_fallback_response(
+                "verifier", session_id or "unknown", f"Processing error: {str(e)}"
+            )
+            
+            return {
+                "status": "error_with_fallback",
+                "session_id": session_id or "unknown", 
+                "result": fallback_result,
+                "error": str(e),
+                "timestamp": datetime.now().isoformat()
+            }
 
     @app.post("/api/agents/evaluator/assess")
     async def evaluator_assess(request: Request):
@@ -696,77 +812,168 @@ def create_app() -> "FastAPI":
             logger.error(f"LLM generation failed: {e}")
             raise HTTPException(status_code=500, detail=str(e))
 
+    # WebSocket info endpoint for discovery and testing
+    @app.get("/ws/info")
+    async def websocket_info():
+        """WebSocket endpoint discovery and information"""
+        return {
+            "websocket_url": "/ws",
+            "status": "available",
+            "supported_message_types": [
+                "ping",
+                "subscribe", 
+                "suggestion_request",
+                "health"
+            ],
+            "connection_info": {
+                "timeout": 30,
+                "keepalive": True,
+                "auto_reconnect": True
+            },
+            "documentation": {
+                "ping": "Simple ping-pong for connection testing",
+                "subscribe": "Subscribe to session updates",
+                "suggestion_request": "Request real-time suggestions",
+                "health": "Check WebSocket health status"
+            },
+            "timestamp": datetime.now().isoformat()
+        }
+
     # WebSocket endpoint for real-time updates
     @app.websocket("/ws")
     async def websocket_endpoint(websocket: WebSocket):
-        """WebSocket endpoint for real-time communication"""
-        await websocket.accept()
-        
+        """WebSocket endpoint for real-time communication with production-grade error handling"""
         try:
+            await websocket.accept()
+            logger.info("WebSocket connection established")
+            
+            # Send welcome message
+            await websocket.send_text(json.dumps({
+                "type": "connected",
+                "message": "WebSocket connection established",
+                "timestamp": datetime.now().isoformat()
+            }))
+            
             while True:
-                # Wait for messages from client
-                data = await websocket.receive_text()
-                
                 try:
-                    message = json.loads(data) if isinstance(data, str) else data
-                    message_type = message.get("type", "unknown")
+                    # Wait for messages from client with timeout
+                    data = await asyncio.wait_for(websocket.receive_text(), timeout=30.0)
                     
-                    if message_type == "ping":
-                        # Simple ping-pong
-                        await websocket.send_text(json.dumps({
-                            "type": "pong",
-                            "timestamp": datetime.now().isoformat()
-                        }))
-                    
-                    elif message_type == "subscribe":
-                        # Subscribe to session updates
-                        session_id = message.get("session_id")
-                        if session_id:
-                            await websocket.send_text(json.dumps({
-                                "type": "subscribed",
-                                "session_id": session_id,
-                                "timestamp": datetime.now().isoformat()
-                            }))
-                    
-                    elif message_type == "suggestion_request":
-                        # Handle real-time suggestion requests
-                        session_id = message.get("session_id")
-                        if session_id and session_manager:
-                            # This could trigger the full suggestion pipeline
-                            await websocket.send_text(json.dumps({
-                                "type": "suggestion_started",
-                                "session_id": session_id,
-                                "timestamp": datetime.now().isoformat()
-                            }))
-                            
-                            # In a full implementation, you would run the agent pipeline here
-                            # and send progress updates
-                            
-                            await websocket.send_text(json.dumps({
-                                "type": "suggestion_complete",
-                                "session_id": session_id,
-                                "suggestions": [],
-                                "timestamp": datetime.now().isoformat()
-                            }))
-                    
-                    else:
-                        # Echo unknown messages
-                        await websocket.send_text(json.dumps({
-                            "type": "echo",
-                            "original": message,
-                            "timestamp": datetime.now().isoformat()
-                        }))
+                    try:
+                        message = json.loads(data) if isinstance(data, str) else data
+                        message_type = message.get("type", "unknown")
                         
-                except json.JSONDecodeError:
+                        logger.debug(f"WebSocket received message type: {message_type}")
+                        
+                        if message_type == "ping":
+                            # Simple ping-pong
+                            await websocket.send_text(json.dumps({
+                                "type": "pong",
+                                "timestamp": datetime.now().isoformat()
+                            }))
+                        
+                        elif message_type == "subscribe":
+                            # Subscribe to session updates
+                            session_id = message.get("session_id")
+                            if session_id:
+                                await websocket.send_text(json.dumps({
+                                    "type": "subscribed",
+                                    "session_id": session_id,
+                                    "timestamp": datetime.now().isoformat()
+                                }))
+                            else:
+                                await websocket.send_text(json.dumps({
+                                    "type": "error",
+                                    "message": "session_id required for subscription",
+                                    "timestamp": datetime.now().isoformat()
+                                }))
+                        
+                        elif message_type == "suggestion_request":
+                            # Handle real-time suggestion requests
+                            session_id = message.get("session_id")
+                            if session_id and session_manager:
+                                # This could trigger the full suggestion pipeline
+                                await websocket.send_text(json.dumps({
+                                    "type": "suggestion_started",
+                                    "session_id": session_id,
+                                    "timestamp": datetime.now().isoformat()
+                                }))
+                                
+                                # In a full implementation, you would run the agent pipeline here
+                                # and send progress updates
+                                
+                                await websocket.send_text(json.dumps({
+                                    "type": "suggestion_complete",
+                                    "session_id": session_id,
+                                    "suggestions": [],
+                                    "timestamp": datetime.now().isoformat()
+                                }))
+                            else:
+                                await websocket.send_text(json.dumps({
+                                    "type": "error", 
+                                    "message": "session_id required and session_manager must be available",
+                                    "timestamp": datetime.now().isoformat()
+                                }))
+                        
+                        elif message_type == "health":
+                            # Health check via WebSocket
+                            await websocket.send_text(json.dumps({
+                                "type": "health_response",
+                                "status": "healthy",
+                                "agents_available": list(agents.keys()) if agents else [],
+                                "session_manager_available": session_manager is not None,
+                                "timestamp": datetime.now().isoformat()
+                            }))
+                        
+                        else:
+                            # Echo unknown messages with helpful response
+                            await websocket.send_text(json.dumps({
+                                "type": "echo",
+                                "original": message,
+                                "supported_types": ["ping", "subscribe", "suggestion_request", "health"],
+                                "timestamp": datetime.now().isoformat()
+                            }))
+                            
+                    except json.JSONDecodeError:
+                        await websocket.send_text(json.dumps({
+                            "type": "error",
+                            "message": "Invalid JSON format",
+                            "timestamp": datetime.now().isoformat()
+                        }))
+                
+                except asyncio.TimeoutError:
+                    # Send keepalive ping
                     await websocket.send_text(json.dumps({
-                        "type": "error",
-                        "message": "Invalid JSON format",
+                        "type": "keepalive",
                         "timestamp": datetime.now().isoformat()
                     }))
                     
         except Exception as e:
             logger.error(f"WebSocket error: {e}")
-            await websocket.close(code=1000)
+            try:
+                if not websocket.client_state.DISCONNECTED:
+                    await websocket.close(code=1000, reason="Server error")
+            except Exception as close_e:
+                logger.error(f"Error closing WebSocket: {close_e}")
+        finally:
+            logger.info("WebSocket connection closed")
+
+    # Add WebSocket info endpoint for testing
+    @app.get("/ws/info")
+    async def websocket_info():
+        """Get WebSocket endpoint information"""
+        return {
+            "websocket_url": "/ws",
+            "status": "available",
+            "supported_message_types": [
+                "ping",
+                "subscribe", 
+                "suggestion_request",
+                "health"
+            ],
+            "description": "WebSocket endpoint for real-time communication",
+            "timestamp": datetime.now().isoformat()
+        }
 
     @app.post("/api/session/{session_id}/suggestion_signal")
     async def suggestion_signal(session_id: str, request: Request):
@@ -836,60 +1043,225 @@ def create_app() -> "FastAPI":
             if not workspace:
                 raise HTTPException(status_code=404, detail="Session not found")
 
-            # Run agent pipeline
-            # 1. Perception
-            perception_result = await agents["perception"].invoke(
-                workspace.model_dump() if hasattr(workspace, 'model_dump') else workspace,
-                {
-                    "session_id": session_id,
-                    "mode": request.mode
-                }
-            )
+            # Run agent pipeline with PTG-generated prompts (blueprint compliance)
+            workspace_data = workspace.model_dump() if hasattr(workspace, 'model_dump') else workspace
+            topic = request.options.get("topic", "general")
+            topic_descriptor = request.options.get("context", "Content generation and analysis")
+            
+            # 1. Perception with PTG-generated prompt
+            if hasattr(session_manager, 'ptg') and session_manager.ptg:
+                try:
+                    perception_prompt = session_manager.ptg.generate_canonical_prompt(
+                        agent_name="perception",
+                        session_id=session_id,
+                        topic=topic,
+                        topic_descriptor=topic_descriptor,
+                        input_data={"mode": request.mode, "content": workspace_data.get("content", "")},
+                        mode=request.mode
+                    )
+                    perception_result = await agents["perception"].invoke(
+                        workspace_data,
+                        {
+                            "session_id": session_id,
+                            "mode": request.mode,
+                            "prompt_payload": perception_prompt
+                        }
+                    )
+                except Exception as e:
+                    logger.warning(f"PTG failed for perception agent: {e}")
+                    perception_result = await agents["perception"].invoke(
+                        workspace_data,
+                        {"session_id": session_id, "mode": request.mode}
+                    )
+            else:
+                perception_result = await agents["perception"].invoke(
+                    workspace_data,
+                    {"session_id": session_id, "mode": request.mode}
+                )
 
-            # 2. Update graph
-            await agents["graph_manager"].invoke(
-                workspace.model_dump() if hasattr(workspace, 'model_dump') else workspace,
-                {
-                    "session_id": session_id,
-                    "entities": perception_result.get("entities", []),
-                    "events": perception_result.get("events", []),
-                }
-            )
-
-            # 3. Generate projections
-            max_branches = request.options.get("max_branches", 3)
-            planner_result = await agents["planner"].invoke(
-                workspace.model_dump() if hasattr(workspace, 'model_dump') else workspace,
-                {
-                    "session_id": session_id, 
-                    "max_branches": max_branches, 
-                    "mode": request.mode
-                }
-            )
-
-            # 4. Verify branches
-            verified_branches = []
-            verifications = []
-            for branch in planner_result.get("branches", []):
-                verification = await agents["verifier"].invoke(
-                    workspace.model_dump() if hasattr(workspace, 'model_dump') else workspace,
+            # 2. Update graph with PTG-generated prompt
+            if hasattr(session_manager, 'ptg') and session_manager.ptg:
+                try:
+                    graph_prompt = session_manager.ptg.generate_canonical_prompt(
+                        agent_name="graph_manager",
+                        session_id=session_id,
+                        topic=topic,
+                        topic_descriptor=topic_descriptor,
+                        input_data={
+                            "entities": perception_result.get("entities", []),
+                            "events": perception_result.get("events", [])
+                        },
+                        mode=request.mode
+                    )
+                    await agents["graph_manager"].invoke(
+                        workspace_data,
+                        {
+                            "session_id": session_id,
+                            "entities": perception_result.get("entities", []),
+                            "events": perception_result.get("events", []),
+                            "prompt_payload": graph_prompt
+                        }
+                    )
+                except Exception as e:
+                    logger.warning(f"PTG failed for graph manager: {e}")
+                    await agents["graph_manager"].invoke(
+                        workspace_data,
+                        {
+                            "session_id": session_id,
+                            "entities": perception_result.get("entities", []),
+                            "events": perception_result.get("events", []),
+                        }
+                    )
+            else:
+                await agents["graph_manager"].invoke(
+                    workspace_data,
                     {
                         "session_id": session_id,
-                        "content": branch.get("content", ""), 
-                        "branch_data": branch
+                        "entities": perception_result.get("entities", []),
+                        "events": perception_result.get("events", []),
                     }
                 )
+
+            # 3. Generate projections with PTG-generated prompt
+            max_branches = request.options.get("max_branches", 3)
+            logger.warning(f"🔍 Starting Planner with max_branches: {max_branches}")
+            if hasattr(session_manager, 'ptg') and session_manager.ptg:
+                try:
+                    logger.warning("🔍 Generating PTG prompt for planner...")
+                    planner_prompt = session_manager.ptg.generate_canonical_prompt(
+                        agent_name="planner",
+                        session_id=session_id,
+                        topic=topic,
+                        topic_descriptor=topic_descriptor,
+                        input_data={
+                            "max_branches": max_branches,
+                            "content": workspace_data.get("content", ""),
+                            "context": request.options.get("context", "")
+                        },
+                        mode=request.mode
+                    )
+                    logger.warning(f"🔍 PTG prompt generated successfully, keys: {list(planner_prompt.keys())}")
+                    planner_result = await agents["planner"].invoke(
+                        workspace_data,
+                        {
+                            "session_id": session_id, 
+                            "max_branches": max_branches, 
+                            "mode": request.mode,
+                            "prompt_payload": planner_prompt
+                        }
+                    )
+                    logger.warning(f"🔍 Planner result keys: {list(planner_result.keys())}")
+                    logger.warning(f"🔍 Planner branches count: {len(planner_result.get('branches', []))}")
+                except Exception as e:
+                    logger.warning(f"❌ PTG failed for planner: {e}")
+                    planner_result = await agents["planner"].invoke(
+                        workspace_data,
+                        {
+                            "session_id": session_id, 
+                            "max_branches": max_branches, 
+                            "mode": request.mode
+                        }
+                    )
+            else:
+                logger.warning("❌ No PTG available, using fallback planner call")
+                planner_result = await agents["planner"].invoke(
+                    workspace_data,
+                    {
+                        "session_id": session_id, 
+                        "max_branches": max_branches, 
+                        "mode": request.mode
+                    }
+                )
+
+            # 4. Verify branches with PTG-generated prompts
+            verified_branches = []
+            verifications = []
+            logger.warning(f"🔍 Processing {len(planner_result.get('branches', []))} branches from planner")
+            for i, branch in enumerate(planner_result.get("branches", [])):
+                logger.warning(f"🔍 Processing branch {i}: {list(branch.keys()) if isinstance(branch, dict) else type(branch)}")
+                if hasattr(session_manager, 'ptg') and session_manager.ptg:
+                    try:
+                        verifier_prompt = session_manager.ptg.generate_canonical_prompt(
+                            agent_name="verifier",
+                            session_id=session_id,
+                            topic=topic,
+                            topic_descriptor=topic_descriptor,
+                            input_data={
+                                "content": branch.get("content", {}) if isinstance(branch, dict) else str(branch),
+                                "branch_data": branch
+                            },
+                            mode=request.mode
+                        )
+                        verification = await agents["verifier"].invoke(
+                            workspace_data,
+                            {
+                                "session_id": session_id,
+                                "content": branch.get("content", {}) if isinstance(branch, dict) else str(branch), 
+                                "branch_data": branch,
+                                "prompt_payload": verifier_prompt
+                            }
+                        )
+                    except Exception as e:
+                        logger.warning(f"PTG failed for verifier: {e}")
+                        verification = await agents["verifier"].invoke(
+                            workspace_data,
+                            {
+                                "session_id": session_id,
+                                "content": branch.get("content", {}) if isinstance(branch, dict) else str(branch), 
+                                "branch_data": branch
+                            }
+                        )
+                else:
+                    verification = await agents["verifier"].invoke(
+                        workspace_data,
+                        {
+                            "session_id": session_id,
+                            "content": branch.get("content", {}) if isinstance(branch, dict) else str(branch), 
+                            "branch_data": branch
+                        }
+                    )
                 verifications.append(verification)
                 verified_branches.append(branch)
+                logger.warning(f"🔍 Added branch {i} to verified_branches, total: {len(verified_branches)}")
 
-            # 5. Score and rank
-            evaluation = await agents["evaluator"].invoke(
-                workspace.model_dump() if hasattr(workspace, 'model_dump') else workspace,
-                {
-                    "session_id": session_id,
-                    "branches": verified_branches
-                }
-            )
+            logger.warning(f"🔍 Final verified_branches count: {len(verified_branches)}")
+
+            # 5. Score and rank with PTG-generated prompt
+            if hasattr(session_manager, 'ptg') and session_manager.ptg:
+                try:
+                    evaluator_prompt = session_manager.ptg.generate_canonical_prompt(
+                        agent_name="evaluator",
+                        session_id=session_id,
+                        topic=topic,
+                        topic_descriptor=topic_descriptor,
+                        input_data={"branches": verified_branches},
+                        mode=request.mode
+                    )
+                    evaluation = await agents["evaluator"].invoke(
+                        workspace_data,
+                        {
+                            "session_id": session_id,
+                            "branches": verified_branches,
+                            "prompt_payload": evaluator_prompt
+                        }
+                    )
+                except Exception as e:
+                    logger.warning(f"PTG failed for evaluator: {e}")
+                    evaluation = await agents["evaluator"].invoke(
+                        workspace_data,
+                        {
+                            "session_id": session_id,
+                            "branches": verified_branches
+                        }
+                    )
+            else:
+                evaluation = await agents["evaluator"].invoke(
+                    workspace_data,
+                    {
+                        "session_id": session_id,
+                        "branches": verified_branches
+                    }
+                )
 
             # Save projections to workspace
             await session_manager.save_projections(
@@ -901,12 +1273,34 @@ def create_app() -> "FastAPI":
                 },
             )
 
+            # Convert branches to ProjectionSchema format
+            formatted_projections = {}
+            for i, branch in enumerate(verified_branches[:max_branches]):
+                # Extract the actual content structure
+                content = branch.get("content", {})
+                if isinstance(content, dict):
+                    formatted_projections[f"branch_{i}"] = {
+                        "title": content.get("title", f"Branch {i+1}"),
+                        "paragraph": content.get("paragraph", content.get("content", "No content available")),
+                        "events": content.get("events", []),
+                        "flags": content.get("flags", {}),
+                        "branch_type": "balanced",
+                        "score": branch.get("score_estimate", 0.0)
+                    }
+                else:
+                    # Fallback for non-dict content
+                    formatted_projections[f"branch_{i}"] = {
+                        "title": f"Branch {i+1}",
+                        "paragraph": str(content) if content else "No content available",
+                        "events": [],
+                        "flags": {},
+                        "branch_type": "balanced",
+                        "score": branch.get("score_estimate", 0.0)
+                    }
+
             return SuggestionsResponse(
                 session_id=session_id,
-                projections={
-                    f"branch_{i}": branch
-                    for i, branch in enumerate(verified_branches[:max_branches])
-                },
+                projections=formatted_projections,
                 metadata={
                     "branch_scores": evaluation.get("branch_scores", []),
                     "verifications": verifications[:max_branches]

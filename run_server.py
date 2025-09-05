@@ -7,9 +7,35 @@ Handles import paths and environment setup properly
 # CRITICAL: Suppress PyTorch warnings BEFORE any imports
 import os
 import warnings
+import sys
+
+# Comprehensive PyTorch warning suppression
 os.environ['PYTORCH_DISABLE_WARNING'] = '1'
 os.environ['TORCH_DISABLE_WARNING'] = '1'
+os.environ['PYTORCH_WARNINGS'] = 'ignore'
+os.environ['TORCH_WARNINGS'] = 'ignore'
+
+# Suppress specific torch warnings
 warnings.filterwarnings("ignore", message=".*Redirects are currently not supported.*")
+warnings.filterwarnings("ignore", category=UserWarning, module="torch")
+warnings.filterwarnings("ignore", message=".*multiprocessing.*redirects.*")
+
+# Suppress at the module level before torch is imported anywhere
+if 'torch' not in sys.modules:
+    # Pre-emptive torch warning suppression
+    import warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        try:
+            import torch.distributed.elastic.multiprocessing.redirects
+            # Monkey patch the warning function
+            original_warn = warnings.warn
+            def silent_warn(message, category=UserWarning, stacklevel=1, source=None):
+                if "Redirects are currently not supported" not in str(message):
+                    original_warn(message, category, stacklevel, source)
+            warnings.warn = silent_warn
+        except ImportError:
+            pass
 
 import sys
 from pathlib import Path
