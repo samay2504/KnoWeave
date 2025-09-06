@@ -64,12 +64,12 @@ if BaseModel != object:
 
         if PYDANTIC_V2:
             model_config = ConfigDict(
-                extra="forbid", validate_assignment=True, use_enum_values=True
+                extra="allow", validate_assignment=True, use_enum_values=True
             )
         else:
 
             class Config:
-                extra = "forbid"
+                extra = "allow"
                 validate_assignment = True
                 use_enum_values = True
 
@@ -228,6 +228,7 @@ class NewSessionRequest(BaseSchema):
     )
     initial_content: str = Field("", description="Initial content")
     policy: Optional[PolicySchema] = Field(None, description="Session policies")
+    user_preferences: Optional[Dict[str, Any]] = Field(None, description="User preferences")
 
 
 class SuggestRequest(BaseSchema):
