@@ -156,53 +156,6 @@ async def get_orchestrator() -> AgentOrchestrator:
         llm_provider=llm_provider,
     )
 
-
-@router.post("/new", response_model=Dict[str, Any])
-async def create_session(
-    topic: str = Body(..., description="Topic for the session"),
-    mode: str = Body(
-        default="story", description="Content mode (story, essay, lesson_plan, etc.)"
-    ),
-    user_preferences: Optional[Dict[str, Any]] = Body(default=None),
-    orchestrator: AgentOrchestrator = Depends(get_orchestrator),
-):
-    """Create a new co-creation session"""
-    try:
-        session_id = str(uuid.uuid4())
-        logger.info(f"Creating new session {session_id} for topic: {topic}")
-
-        session_manager = await orchestrator.get_session_manager()
-
-        # Import the required schema
-        from utils.schemas import NewSessionRequest, PolicySchema
-
-        # Create session request
-        request = NewSessionRequest(
-            user_id="default_user",  # TODO: Get from auth
-            topic=topic,
-            topic_descriptor=mode,
-            initial_content="",
-            policy=PolicySchema(),
-        )
-
-        # Create workspace
-        workspace = await session_manager.create_session(request)
-
-        return {
-            "session_id": workspace.session_id,
-            "workspace": (
-                workspace.dict() if hasattr(workspace, "dict") else workspace.__dict__
-            ),
-            "message": "Session created successfully",
-        }
-
-    except Exception as e:
-        logger.error(f"Session creation failed: {e}")
-        raise HTTPException(
-            status_code=500, detail=f"Failed to create session: {str(e)}"
-        )
-
-
 @router.get("/{session_id}", response_model=Dict[str, Any])
 async def get_session(
     session_id: str, orchestrator: AgentOrchestrator = Depends(get_orchestrator)
@@ -231,80 +184,65 @@ async def get_session(
         raise HTTPException(status_code=500, detail=f"Failed to get session: {str(e)}")
 
 
-@router.post("/{session_id}/analyze", response_model=Dict[str, Any])
-async def analyze_session(
-    session_id: str, orchestrator: AgentOrchestrator = Depends(get_orchestrator)
-):
-    """Analyze current session state"""
-    try:
-        logger.info(f"Analyzing session {session_id}")
+from fastapi import Request as FastAPIRequest
+from server.routes.auth_routes import get_current_user_from_request
 
-        session_manager = await orchestrator.get_session_manager()
-        perception_agent = await orchestrator.get_perception_agent()
-
-        workspace = await session_manager.get_session(session_id)
-        if not workspace:
-            raise HTTPException(status_code=404, detail="Session not found")
-
-        # Try to run analysis if agent is available
-        analysis = {"message": "Analysis placeholder", "session_id": session_id}
-        if perception_agent:
-            try:
-                analysis = await perception_agent.invoke(workspace, {})
-            except Exception as e:
-                logger.warning(f"Analysis failed: {e}")
-                analysis = {
-                    "error": f"Analysis failed: {str(e)}",
-                    "session_id": session_id,
-                }
-
-        return {
-            "session_id": session_id,
-            "analysis": analysis.dict() if hasattr(analysis, "dict") else analysis,
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Session analysis failed: {e}")
-        raise HTTPException(
-            status_code=500, detail=f"Failed to analyze session: {str(e)}"
-        )
-
-
-@router.post("/{session_id}/generate", response_model=Dict[str, Any])
-async def generate_content(
-    session_id: str,
-    user_input: str = Body(
-        default="", description="Optional user input to incorporate"
-    ),
-    num_projections: int = Body(
-        default=3, description="Number of content projections to generate"
-    ),
+@router.post("/new", response_model=Dict[str, Any])
+async def create_session(
+    request: FastAPIRequest,
     orchestrator: AgentOrchestrator = Depends(get_orchestrator),
 ):
-    """Generate content projections for session"""
+    """Create a new co-creation session"""
     try:
-        logger.info(f"Generating content for session {session_id}")
+        request_data = await request.json()
+        topic = request_data.get("topic")
+        mode = request_data.get("mode", "story")
+        user_preferences = request_data.get("user_preferences")
+        initial_content = request_data.get("initial_content", "")
+        policy = request_data.get("policy")
+        user_id = request_data.get("user_id")
+
+        # Try to get user_id from auth if not provided
+        user_id_from_auth = None
+        user = get_current_user_from_request(request)
+        if user and "user_id" in user:
+            user_id_from_auth = user["user_id"]
+        if not user_id:
+            user_id = user_id_from_auth or "default_user"
+
+        session_id = str(uuid.uuid4())
+        logger.info(f"Creating new session {session_id} for topic: {topic}")
 
         session_manager = await orchestrator.get_session_manager()
-        planner_agent = await orchestrator.get_planner_agent()
 
-        workspace = await session_manager.get_session(session_id)
-        if not workspace:
-            raise HTTPException(status_code=404, detail="Session not found")
+        from utils.schemas import NewSessionRequest, PolicySchema
+        # Use provided policy or default
+        policy_obj = PolicySchema(**policy) if policy else PolicySchema()
 
-        # Update workspace with user input if provided
-        if user_input.strip():
-            # Update workspace content
-            if hasattr(workspace, "topic_content"):
-                workspace.topic_content += f"\n{user_input}"
-            elif hasattr(workspace, "story_so_far"):
-                workspace.story_so_far += f"\n{user_input}"
+        request_obj = NewSessionRequest(
+            user_id=user_id,
+            topic=topic,
+            topic_descriptor=mode,
+            initial_content=initial_content,
+            policy=policy_obj,
+            user_preferences=user_preferences,
+        )
 
-            # Save updated workspace
-            await session_manager.update_session(session_id, workspace)
+        workspace = await session_manager.create_session(request_obj)
 
+        return {
+            "session_id": workspace.session_id,
+            "workspace": (
+                workspace.dict() if hasattr(workspace, "dict") else workspace.__dict__
+            ),
+            "message": "Session created successfully",
+        }
+
+    except Exception as e:
+        logger.error(f"Session creation failed: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to create session: {str(e)}"
+        )
         # Generate projections
         projections = {
             "A": {"content": "Projection A placeholder"},

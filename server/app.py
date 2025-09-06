@@ -1531,19 +1531,38 @@ def create_app() -> "FastAPI":
                 "timestamp": datetime.now().isoformat()
             }
 
-    # Serve static files (frontend)
+
+    # Serve static files (frontend) and favicon
     try:
-        # Use absolute path to web/build directory (relative to project root)
         project_root = Path(__file__).parent.parent
         static_dir = project_root / "web" / "build"
-        
+        fallback_static_dir = Path(__file__).parent / "static"
+
+        # Mount main static directory if exists
         if static_dir.exists():
             app.mount("/", StaticFiles(directory=str(static_dir), html=True), name="static")
             logger.info(f"Serving static files from: {static_dir}")
         else:
             logger.warning(f"Static files directory not found: {static_dir}")
+
+        # Always mount /static for backend static assets (e.g., favicon)
+        if fallback_static_dir.exists():
+            app.mount("/static", StaticFiles(directory=str(fallback_static_dir)), name="backend-static")
+            logger.info(f"Serving backend static files from: {fallback_static_dir}")
+        else:
+            logger.warning(f"Backend static directory not found: {fallback_static_dir}")
+
+        # Add fallback /favicon.ico route if not handled by frontend
+        @app.get("/favicon.ico")
+        async def favicon():
+            from fastapi.responses import FileResponse
+            favicon_path = fallback_static_dir / "favicon.ico"
+            if favicon_path.exists():
+                return FileResponse(str(favicon_path), media_type="image/x-icon")
+            else:
+                return Response(status_code=404)
     except Exception as e:
-        logger.warning(f"Failed to mount static files: {e}")
+        logger.warning(f"Failed to mount static or favicon: {e}")
 
     return app
 
