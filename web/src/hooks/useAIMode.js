@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { BACKEND_PORT } from '../config/constants';
 
 /**
@@ -17,7 +17,7 @@ export const useAIMode = (initialMode = 'balanced') => {
   /**
    * Update the current AI mode and sync with backend
    */
-  const updateMode = async (newMode, config = null) => {
+  const updateMode = useCallback(async (newMode, config = null) => {
     setIsLoading(true);
     setError(null);
 
@@ -59,7 +59,7 @@ export const useAIMode = (initialMode = 'balanced') => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [API_BASE]);
 
   /**
    * Generate prompt using current mode with domain support
@@ -138,7 +138,7 @@ export const useAIMode = (initialMode = 'balanced') => {
     };
 
     initializeMode();
-  }, [initialMode]);
+  }, [initialMode, updateMode]);
 
   /**
    * Detect domain from user input text

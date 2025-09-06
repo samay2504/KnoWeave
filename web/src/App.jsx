@@ -8,7 +8,7 @@ import HealthCheck from './components/HealthCheck';
 import ModeSelector from './components/ModeSelector';
 import DomainSelector from './components/DomainSelector';
 import { useAIMode, useSession } from './hooks/useAIMode';
-import { AI_MODES, DEFAULT_MODE, API_CONFIG, TOPIC_DOMAINS, DOMAIN_CONFIGS, DEFAULT_DOMAIN } from './config/constants';
+import { DEFAULT_MODE, API_CONFIG, DOMAIN_CONFIGS, DEFAULT_DOMAIN } from './config/constants';
 import './index.css';
 
 const API_BASE_URL = API_CONFIG.BASE_URL;
@@ -37,10 +37,9 @@ const Dashboard = ({ user }) => {
   } = useAIMode(DEFAULT_MODE);
 
   const {
-    sessionId,
-    isSessionActive,
-    createSession,
-    endSession
+  sessionId,
+  isSessionActive,
+  createSession
   } = useSession();
 
   // Initialize session on mount

@@ -240,15 +240,15 @@ const AuthGoogle = ({ onAuthStart, onAuthComplete, onAuthError }) => {
             By signing in, you agree to our terms of service and privacy policy
           </p>
           <div className="flex justify-center space-x-6 mt-4">
-            <a href="#" className="cyber-subheading text-xs hover:text-neon-orange-400 transition-colors">
+            <button type="button" className="cyber-subheading text-xs hover:text-neon-orange-400 transition-colors" tabIndex={0} aria-label="Privacy Policy">
               Privacy Policy
-            </a>
-            <a href="#" className="cyber-subheading text-xs hover:text-neon-orange-400 transition-colors">
+            </button>
+            <button type="button" className="cyber-subheading text-xs hover:text-neon-orange-400 transition-colors" tabIndex={0} aria-label="Terms of Service">
               Terms of Service
-            </a>
-            <a href="#" className="cyber-subheading text-xs hover:text-neon-orange-400 transition-colors">
+            </button>
+            <button type="button" className="cyber-subheading text-xs hover:text-neon-orange-400 transition-colors" tabIndex={0} aria-label="Support">
               Support
-            </a>
+            </button>
           </div>
         </div>
       </div>

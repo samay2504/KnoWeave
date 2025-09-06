@@ -37,63 +37,59 @@ const AuthGoogle = ({ onAuthStart, onAuthComplete, onAuthError }) => {
     }
   }, [error]);
 
-  const handleGoogleLogin = async () => {
+  const handleGoogleLogin = async (attempts = 0) => {
     if (isOffline) {
       setError('You appear to be offline. Please check your internet connection and try again.');
       return;
     }
-
     setIsLoading(true);
     setError(null);
-    let attempts = 0;
     const maxAttempts = maxRetries;
-    while (attempts < maxAttempts) {
-      try {
-        onAuthStart?.();
-        // Check if server is reachable
-        const healthResponse = await fetch(`${API_BASE_URL}/health`, { method: 'GET' });
-        if (!healthResponse.ok) {
-          throw new Error('Server health check failed');
-        }
-        // Initiate Google OAuth flow
-        const response = await fetch(`${API_BASE_URL}/api/auth/google`, {
-          method: 'GET',
-          credentials: 'include',
-          headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json'
-          }
-        });
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => null);
-          throw new Error(errorData?.detail || `Authentication failed (${response.status})`);
-        }
-        const data = await response.json();
-        if (data.auth_url) {
-          window.location.href = data.auth_url;
-          return;
-        } else {
-          throw new Error('No authentication URL received from server');
-        }
-      } catch (err) {
-        attempts++;
-        let errorMessage = 'Authentication failed. Please try again.';
-        if (err.name === 'TypeError' && err.message.includes('fetch')) {
-          errorMessage = 'Cannot connect to authentication server. Please check your connection and try again.';
-        } else if (err.message.includes('timeout') || err.message.includes('ECONNREFUSED')) {
-          errorMessage = 'Connection timeout. Please check if the server is running and try again.';
-        } else if (err.message) {
-          errorMessage = err.message;
-        }
-        setError(errorMessage);
-        setRetryCount(prev => prev + 1);
-        onAuthError?.(err);
-        if (attempts < maxAttempts) {
-          await new Promise(res => setTimeout(res, 1000 * attempts)); // Exponential backoff
-        }
-      } finally {
-        setIsLoading(false);
+    try {
+      onAuthStart?.();
+      // Check if server is reachable
+      const healthResponse = await fetch(`${API_BASE_URL}/health`, { method: 'GET' });
+      if (!healthResponse.ok) {
+        throw new Error('Server health check failed');
       }
+      // Initiate Google OAuth flow
+      const response = await fetch(`${API_BASE_URL}/api/auth/google`, {
+        method: 'GET',
+        credentials: 'include',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        }
+      });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        throw new Error(errorData?.detail || `Authentication failed (${response.status})`);
+      }
+      const data = await response.json();
+      if (data.auth_url) {
+        window.location.href = data.auth_url;
+        return;
+      } else {
+        throw new Error('No authentication URL received from server');
+      }
+    } catch (err) {
+      let errorMessage = 'Authentication failed. Please try again.';
+      if (err.name === 'TypeError' && err.message.includes('fetch')) {
+        errorMessage = 'Cannot connect to authentication server. Please check your connection and try again.';
+      } else if (err.message.includes('timeout') || err.message.includes('ECONNREFUSED')) {
+        errorMessage = 'Connection timeout. Please check if the server is running and try again.';
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+      setError(errorMessage);
+      setRetryCount(prev => prev + 1);
+      onAuthError?.(err);
+      if (attempts + 1 < maxAttempts) {
+        await new Promise(res => setTimeout(res, 1000 * (attempts + 1)));
+        await handleGoogleLogin(attempts + 1);
+      }
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -106,7 +102,7 @@ const AuthGoogle = ({ onAuthStart, onAuthComplete, onAuthError }) => {
   };
 
   return (
-    <div className="min-h-screen bg-cyber-black cyber-grid flex items-center justify-center p-4">
+  <div className="min-h-screen bg-cyber-black cyber-grid flex items-center justify-center p-4" data-testid="auth-container">
       <div className="max-w-md w-full">
         {/* Main Auth Card */}
         <div className="glass-strong rounded-2xl p-8 shadow-cyber border-cyber liquid-morph">
@@ -251,15 +247,15 @@ const AuthGoogle = ({ onAuthStart, onAuthComplete, onAuthError }) => {
             By signing in, you agree to our terms of service and privacy policy
           </p>
           <div className="flex justify-center space-x-6 mt-4">
-            <a href="#" className="cyber-subheading text-xs hover:text-neon-orange-400 transition-colors">
+            <button type="button" className="cyber-subheading text-xs hover:text-neon-orange-400 transition-colors" tabIndex={0} aria-label="Privacy Policy">
               Privacy Policy
-            </a>
-            <a href="#" className="cyber-subheading text-xs hover:text-neon-orange-400 transition-colors">
+            </button>
+            <button type="button" className="cyber-subheading text-xs hover:text-neon-orange-400 transition-colors" tabIndex={0} aria-label="Terms of Service">
               Terms of Service
-            </a>
-            <a href="#" className="cyber-subheading text-xs hover:text-neon-orange-400 transition-colors">
+            </button>
+            <button type="button" className="cyber-subheading text-xs hover:text-neon-orange-400 transition-colors" tabIndex={0} aria-label="Support">
               Support
-            </a>
+            </button>
           </div>
         </div>
       </div>

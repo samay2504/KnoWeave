@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 
 const GraphView = ({ sessionId }) => {
   const [graphData, setGraphData] = useState(null);
@@ -11,7 +11,7 @@ const GraphView = ({ sessionId }) => {
 
   const apiBase = process.env.REACT_APP_API_BASE || '';
 
-  const fetchGraphData = async () => {
+  const fetchGraphData = useCallback(async () => {
     if (!sessionId) return;
     
     setLoading(true);
@@ -34,11 +34,11 @@ const GraphView = ({ sessionId }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [apiBase, sessionId]);
 
   useEffect(() => {
     fetchGraphData();
-  }, [sessionId]);
+  }, [sessionId, fetchGraphData]);
 
   const handleNodeAction = async (action, nodeId) => {
     if (!sessionId || !nodeId) return;

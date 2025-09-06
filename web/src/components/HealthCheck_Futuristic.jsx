@@ -9,7 +9,7 @@ const HealthCheck = () => {
   const [error, setError] = useState(null);
   const [expanded, setExpanded] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
-  const [refreshInterval, setRefreshInterval] = useState(30000);
+  const [refreshInterval] = useState(30000);
 
   const checkHealth = useCallback(async (showLoading = false) => {
     if (showLoading) setLoading(true);

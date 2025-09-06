@@ -1,7 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { authFetch, parseAuthError, getErrorRedirectUrl } from '../utils/auth';
-import AUTH_CONFIG from '../config/auth';
 
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronDownIcon, Cog6ToothIcon } from '@heroicons/react/24/outline';
+import { ChevronDownIcon } from '@heroicons/react/24/outline';
 import { TOPIC_DOMAINS, DOMAIN_CONFIGS, DEFAULT_DOMAIN } from '../config/constants';
 
 /**

@@ -90,9 +90,9 @@ describe('Callback Component', () => {
     await waitFor(() => {
       const storedUser = localStorage.getItem('user');
       expect(storedUser).toBeTruthy();
-      const userData = JSON.parse(storedUser);
-      expect(userData.email).toBe('test@example.com');
     });
+    const userData = JSON.parse(localStorage.getItem('user'));
+    expect(userData.email).toBe('test@example.com');
 
     // Check if navigation occurs after delay
     await waitFor(() => {

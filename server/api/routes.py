@@ -127,9 +127,10 @@ async def get_orchestrator() -> AgentOrchestrator:
 
             database_client = await create_mongo_client(config.get_database_config())
         else:
-            from db.json_fallback import create_json_client
+            from db.json_fallback import create_json_fallback_client
 
-            database_client = await create_json_client(config.get_database_config())
+            # Use default path for fallback client
+            database_client = create_json_fallback_client("data/backups")
 
         # Graph client (same as database for now)
         graph_client = database_client
@@ -142,10 +143,11 @@ async def get_orchestrator() -> AgentOrchestrator:
     except Exception as e:
         logger.warning(f"Client initialization failed, using fallbacks: {e}")
         # Use JSON fallback for everything
-        from db.json_fallback import create_json_client
+        from db.json_fallback import create_json_fallback_client
 
-        database_client = await create_json_client({"data_dir": "./data"})
-        graph_client = database_client
+
+    database_client = create_json_fallback_client("data/backups")
+    graph_client = database_client
 
     return AgentOrchestrator(
         config=config.dict(),

@@ -116,10 +116,10 @@ describe('AuthGoogle Component', () => {
   test('responsive design elements', () => {
     render(<AuthGoogle />);
     
-    const container = screen.getByText('Human-AI Co-Creation').closest('div');
-    expect(container).toHaveClass('max-w-md', 'w-full');
-    
-    const button = screen.getByRole('button', { name: /continue with google/i });
-    expect(button).toHaveClass('w-full');
+  const container = screen.getByTestId('auth-container');
+  expect(container).toHaveClass('max-w-md', 'w-full');
+
+  const button = screen.getByRole('button', { name: /continue with google/i });
+  expect(button).toHaveClass('w-full');
   });
 });
