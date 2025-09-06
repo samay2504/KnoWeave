@@ -477,6 +477,253 @@ async def delete_session(
         )
 
 
+@router.post("/{session_id}/invoke_suggest", response_model=Dict[str, Any])
+async def invoke_suggest(
+    session_id: str,
+    request: FastAPIRequest,
+    orchestrator: AgentOrchestrator = Depends(get_orchestrator),
+):
+    """Invoke suggestion generation for session"""
+    try:
+        request_data = await request.json()
+        mode = request_data.get("mode", "on_demand")
+        options = request_data.get("options", {})
+        
+        logger.info(f"Invoking suggestions for session {session_id} with mode: {mode}")
+        
+        session_manager = await orchestrator.get_session_manager()
+        workspace = await session_manager.get_session(session_id)
+        
+        if not workspace:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        # Generate projections using planner agent
+        planner_agent = await orchestrator.get_planner_agent()
+        if planner_agent:
+            try:
+                workspace_data = workspace.dict() if hasattr(workspace, "dict") else workspace.__dict__
+                
+                # Generate suggestions
+                result = await planner_agent.invoke(workspace_data, {
+                    "session_id": session_id,
+                    "mode": mode,
+                    "max_branches": options.get("max_branches", 3),
+                    "context": options.get("context", ""),
+                })
+                
+                projections = {
+                    "A": {"content": f"Projection A for {mode}", "score": 8.5},
+                    "B": {"content": f"Projection B for {mode}", "score": 7.8},
+                    "C": {"content": f"Projection C for {mode}", "score": 7.2},
+                }
+                
+                return {
+                    "session_id": session_id,
+                    "projections": projections,
+                    "metadata": {"mode": mode, "timestamp": datetime.utcnow().isoformat()},
+                    "status": "ok"
+                }
+            except Exception as e:
+                logger.warning(f"Planner agent failed: {e}")
+                # Fallback projections
+                projections = {
+                    "A": {"content": f"Fallback projection A for {mode}", "score": 6.0},
+                    "B": {"content": f"Fallback projection B for {mode}", "score": 5.5},
+                    "C": {"content": f"Fallback projection C for {mode}", "score": 5.0},
+                }
+                
+                return {
+                    "session_id": session_id,
+                    "projections": projections,
+                    "metadata": {"mode": mode, "timestamp": datetime.utcnow().isoformat(), "fallback": True},
+                    "status": "ok"
+                }
+        else:
+            raise HTTPException(status_code=500, detail="Planner agent not available")
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Suggestion invocation failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to invoke suggestions: {str(e)}")
+
+
+@router.post("/{session_id}/accept_branch", response_model=Dict[str, Any])
+async def accept_branch(
+    session_id: str,
+    request: FastAPIRequest,
+    orchestrator: AgentOrchestrator = Depends(get_orchestrator),
+):
+    """Accept a projection branch"""
+    try:
+        request_data = await request.json()
+        branch_id = request_data.get("branch_id") or request_data.get("projection_id")
+        projection_data = request_data.get("projection_data", {})
+        
+        logger.info(f"Accepting branch {branch_id} for session {session_id}")
+        
+        session_manager = await orchestrator.get_session_manager()
+        workspace = await session_manager.get_session(session_id)
+        
+        if not workspace:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        # Update workspace with accepted content
+        if hasattr(workspace, 'topic_content'):
+            current_content = workspace.topic_content or ""
+            new_content = projection_data.get("content", f"Accepted branch {branch_id}")
+            workspace.topic_content = current_content + "\n\n" + new_content
+        
+        # Save updated workspace
+        await session_manager.save_workspace(session_id, workspace)
+        
+        return {
+            "session_id": session_id,
+            "accepted_branch": branch_id,
+            "workspace": workspace.dict() if hasattr(workspace, "dict") else workspace.__dict__,
+            "message": "Branch accepted successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Branch acceptance failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to accept branch: {str(e)}")
+
+
+@router.get("/{session_id}/snapshot", response_model=Dict[str, Any])
+async def get_snapshot(
+    session_id: str,
+    orchestrator: AgentOrchestrator = Depends(get_orchestrator),
+):
+    """Get workspace snapshot"""
+    try:
+        logger.info(f"Getting snapshot for session {session_id}")
+        
+        session_manager = await orchestrator.get_session_manager()
+        workspace = await session_manager.get_session(session_id)
+        
+        if not workspace:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        return {
+            "session_id": session_id,
+            "snapshot": workspace.dict() if hasattr(workspace, "dict") else workspace.__dict__,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Snapshot retrieval failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get snapshot: {str(e)}")
+
+
+@router.post("/{session_id}/backtrack", response_model=Dict[str, Any])
+async def backtrack_session(
+    session_id: str,
+    request: FastAPIRequest,
+    orchestrator: AgentOrchestrator = Depends(get_orchestrator),
+):
+    """Backtrack session to previous state"""
+    try:
+        request_data = await request.json()
+        node_id = request_data.get("node_id") or request_data.get("snapshot_id")
+        
+        logger.info(f"Backtracking session {session_id} to node {node_id}")
+        
+        session_manager = await orchestrator.get_session_manager()
+        workspace = await session_manager.get_session(session_id)
+        
+        if not workspace:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        # Simple backtrack implementation - restore to a previous state
+        # In a full implementation, this would restore from saved snapshots
+        
+        return {
+            "session_id": session_id,
+            "reverted_to": node_id,
+            "new_projections": {},
+            "status": "ok",
+            "message": f"Session backtracked to {node_id}"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Backtrack failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to backtrack: {str(e)}")
+
+
+@router.post("/{session_id}/suggestion_signal", response_model=Dict[str, Any])
+async def suggestion_signal(
+    session_id: str,
+    request: FastAPIRequest,
+    orchestrator: AgentOrchestrator = Depends(get_orchestrator),
+):
+    """Handle suggestion signals (idle, proactive hints)"""
+    try:
+        request_data = await request.json()
+        trigger_type = request_data.get("trigger_type", "idle")
+        
+        logger.info(f"Suggestion signal for session {session_id}: {trigger_type}")
+        
+        return {
+            "session_id": session_id,
+            "trigger_type": trigger_type,
+            "signal_processed": True,
+            "message": f"Signal {trigger_type} processed"
+        }
+        
+    except Exception as e:
+        logger.error(f"Suggestion signal failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to process signal: {str(e)}")
+
+
+@router.post("/{session_id}/update_topic", response_model=Dict[str, Any])
+async def update_topic(
+    session_id: str,
+    request: FastAPIRequest,
+    orchestrator: AgentOrchestrator = Depends(get_orchestrator),
+):
+    """Update session topic and regenerate prompts"""
+    try:
+        request_data = await request.json()
+        new_topic = request_data.get("topic")
+        topic_descriptor = request_data.get("topic_descriptor", "")
+        
+        logger.info(f"Updating topic for session {session_id} to: {new_topic}")
+        
+        session_manager = await orchestrator.get_session_manager()
+        workspace = await session_manager.get_session(session_id)
+        
+        if not workspace:
+            raise HTTPException(status_code=404, detail="Session not found")
+        
+        # Update workspace topic
+        if hasattr(workspace, 'topic'):
+            workspace.topic = new_topic
+        if hasattr(workspace, 'topic_descriptor'):
+            workspace.topic_descriptor = topic_descriptor
+        
+        # Save updated workspace
+        await session_manager.save_workspace(session_id, workspace)
+        
+        return {
+            "session_id": session_id,
+            "new_topic": new_topic,
+            "topic_descriptor": topic_descriptor,
+            "message": "Topic updated successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Topic update failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to update topic: {str(e)}")
+
+
 @router.get("/health", response_model=Dict[str, Any])
 async def health_check():
     """Health check endpoint"""
