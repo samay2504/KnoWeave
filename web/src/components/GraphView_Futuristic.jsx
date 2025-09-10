@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import CytoscapeComponent from 'react-cytoscapejs';
 
 const GraphView = ({ sessionId }) => {
   const [graphData, setGraphData] = useState(null);
@@ -64,114 +65,69 @@ const GraphView = ({ sessionId }) => {
     node.text?.toLowerCase().includes(searchQuery.toLowerCase())
   ) || [];
 
-  // Canvas drawing for graph visualization
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas || !graphData?.nodes || view !== 'graph') return;
-    
-    const ctx = canvas.getContext('2d');
-    const rect = canvas.getBoundingClientRect();
-    canvas.width = rect.width;
-    canvas.height = rect.height;
-    
-    // Clear canvas with cyber background
-    ctx.fillStyle = '#0a0a0a';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    
-    // Draw cyber grid
-    ctx.strokeStyle = 'rgba(249, 115, 22, 0.05)';
-    ctx.lineWidth = 1;
-    const gridSize = 20;
-    
-    for (let x = 0; x < canvas.width; x += gridSize) {
-      ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, canvas.height);
-      ctx.stroke();
-    }
-    
-    for (let y = 0; y < canvas.height; y += gridSize) {
-      ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(canvas.width, y);
-      ctx.stroke();
-    }
+  // Cytoscape graph elements and style
+  const cyElements = React.useMemo(() => {
+    if (!graphData?.nodes || !graphData?.edges) return [];
+    const nodes = graphData.nodes.map(node => ({
+      data: {
+        id: node.id,
+        label: node.title || node.id,
+        ...node
+      }
+    }));
+    const edges = graphData.edges.map(edge => ({
+      data: {
+        id: edge.id || `${edge.source}_${edge.target}`,
+        source: edge.source,
+        target: edge.target,
+        ...edge
+      }
+    }));
+    return [...nodes, ...edges];
+  }, [graphData]);
 
-    // Position nodes in a circle with some randomness
-    if (graphData.nodes.length > 0) {
-      const centerX = canvas.width / 2;
-      const centerY = canvas.height / 2;
-      const radius = Math.min(canvas.width, canvas.height) / 3;
-      
-      graphData.nodes.forEach((node, index) => {
-        const angle = (index / graphData.nodes.length) * 2 * Math.PI;
-        node.x = centerX + Math.cos(angle) * radius + (Math.random() - 0.5) * 50;
-        node.y = centerY + Math.sin(angle) * radius + (Math.random() - 0.5) * 50;
-      });
+  const cyStyle = [
+    {
+      selector: 'node',
+      style: {
+        'background-color': '#f97316',
+        'label': 'data(label)',
+        'color': '#fff',
+        'font-size': 12,
+        'text-outline-width': 2,
+        'text-outline-color': '#0a0a0a',
+        'border-width': 2,
+        'border-color': '#fff',
+        'width': 24,
+        'height': 24,
+        'text-valign': 'bottom',
+        'text-halign': 'center',
+        'font-family': 'Orbitron, monospace',
+        'text-background-color': '#0a0a0a',
+        'text-background-opacity': 0.7,
+        'text-background-padding': 2
+      }
+    },
+    {
+      selector: 'node:selected',
+      style: {
+        'background-color': '#ea580c',
+        'border-color': '#f97316',
+        'border-width': 4
+      }
+    },
+    {
+      selector: 'edge',
+      style: {
+        'width': 2,
+        'line-color': '#f97316',
+        'target-arrow-color': '#f97316',
+        'target-arrow-shape': 'triangle',
+        'curve-style': 'bezier',
+        'opacity': 0.8
+      }
     }
-
-    // Draw edges with neon glow
-    if (graphData.edges) {
-      graphData.edges.forEach(edge => {
-        const source = graphData.nodes.find(n => n.id === edge.source);
-        const target = graphData.nodes.find(n => n.id === edge.target);
-        
-        if (source && target) {
-          // Glow effect
-          ctx.strokeStyle = 'rgba(249, 115, 22, 0.3)';
-          ctx.lineWidth = 3;
-          ctx.beginPath();
-          ctx.moveTo(source.x, source.y);
-          ctx.lineTo(target.x, target.y);
-          ctx.stroke();
-          
-          // Main line
-          ctx.strokeStyle = 'rgba(249, 115, 22, 0.8)';
-          ctx.lineWidth = 1;
-          ctx.beginPath();
-          ctx.moveTo(source.x, source.y);
-          ctx.lineTo(target.x, target.y);
-          ctx.stroke();
-        }
-      });
-    }
-
-    // Draw nodes with neon effect
-    if (graphData.nodes) {
-      graphData.nodes.forEach((node) => {
-        // Outer glow
-        const gradient = ctx.createRadialGradient(node.x, node.y, 5, node.x, node.y, 20);
-        gradient.addColorStop(0, node.id === selectedNode?.id ? 'rgba(249, 115, 22, 0.8)' : 'rgba(249, 115, 22, 0.4)');
-        gradient.addColorStop(1, 'rgba(249, 115, 22, 0)');
-        ctx.fillStyle = gradient;
-        ctx.beginPath();
-        ctx.arc(node.x, node.y, 20, 0, 2 * Math.PI);
-        ctx.fill();
-        
-        // Main node
-        ctx.fillStyle = node.id === selectedNode?.id ? '#f97316' : '#ea580c';
-        ctx.beginPath();
-        ctx.arc(node.x, node.y, 8, 0, 2 * Math.PI);
-        ctx.fill();
-        
-        // Node border
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.arc(node.x, node.y, 8, 0, 2 * Math.PI);
-        ctx.stroke();
-        
-        // Draw node labels with cyber font
-        ctx.fillStyle = '#ffffff';
-        ctx.font = '12px Orbitron, monospace';
-        ctx.textAlign = 'center';
-        ctx.shadowColor = 'rgba(249, 115, 22, 0.8)';
-        ctx.shadowBlur = 5;
-        ctx.fillText(node.title?.substring(0, 10) || node.id, node.x, node.y + 25);
-        ctx.shadowBlur = 0;
-      });
-    }
-  }, [view, graphData, selectedNode]);
+  ];
 
   if (loading) {
     return (
@@ -289,21 +245,19 @@ const GraphView = ({ sessionId }) => {
           {/* Graph View */}
           {view === 'graph' && (
             <div className="glass rounded-xl p-4 border-cyber">
-              <canvas
-                ref={canvasRef}
-                className="w-full h-80 rounded-lg cursor-crosshair"
-                onClick={(e) => {
-                  const rect = e.target.getBoundingClientRect();
-                  const x = e.clientX - rect.left;
-                  const y = e.clientY - rect.top;
-                  
-                  // Find clicked node
-                  const clickedNode = graphData.nodes?.find(node => {
-                    const distance = Math.sqrt((node.x - x) ** 2 + (node.y - y) ** 2);
-                    return distance <= 10;
+              <CytoscapeComponent
+                elements={cyElements}
+                style={{ width: '100%', height: '320px', background: '#0a0a0a', borderRadius: '0.75rem', cursor: 'crosshair' }}
+                stylesheet={cyStyle}
+                layout={{ name: 'cose', animate: true, fit: true, padding: 30 }}
+                cy={cy => {
+                  cy.on('tap', 'node', (evt) => {
+                    const node = evt.target.data();
+                    setSelectedNode(node);
                   });
-                  
-                  setSelectedNode(clickedNode || null);
+                  cy.on('tap', (evt) => {
+                    if (evt.target === cy) setSelectedNode(null);
+                  });
                 }}
               />
             </div>

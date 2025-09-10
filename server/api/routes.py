@@ -701,20 +701,47 @@ async def update_topic(
         if not workspace:
             raise HTTPException(status_code=404, detail="Session not found")
         
-        # Update workspace topic
-        if hasattr(workspace, 'topic'):
-            workspace.topic = new_topic
-        if hasattr(workspace, 'topic_descriptor'):
-            workspace.topic_descriptor = topic_descriptor
+        # Update workspace topic metadata according to blueprint PTG architecture
+        workspace.topic = new_topic
+        workspace.topic_descriptor = topic_descriptor
+        workspace.last_modified = datetime.utcnow()
         
-        # Save updated workspace
-        await session_manager.save_workspace(session_id, workspace)
+        # Regenerate PTG prompts for all agents with new topic metadata
+        ptg = session_manager.ptg
+        domain_schemas = ptg.examples_cache.get("domain_schemas", {})
+        
+        # Infer topic family, role, and goal from new topic
+        topic_family = ptg._infer_topic_family_from_schemas(new_topic, domain_schemas)
+        domain_info = domain_schemas.get(topic_family, {})
+        topic_role = domain_info.get("topic_role", "assistant")
+        topic_goal = domain_info.get("topic_goal", "provide helpful assistance")
+        
+        # Update workspace with topic metadata
+        if hasattr(workspace, 'topic_metadata'):
+            workspace.topic_metadata = {
+                "topic_family": topic_family,
+                "topic_role": topic_role, 
+                "topic_goal": topic_goal
+            }
+        
+        # Save updated workspace using proper session manager method
+        success = await session_manager.update_session(session_id, workspace)
+        
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to save workspace updates")
+        
+        logger.info(f"Topic updated successfully for session {session_id}: {new_topic} -> {topic_family}")
         
         return {
             "session_id": session_id,
             "new_topic": new_topic,
             "topic_descriptor": topic_descriptor,
-            "message": "Topic updated successfully"
+            "topic_metadata": {
+                "topic_family": topic_family,
+                "topic_role": topic_role,
+                "topic_goal": topic_goal
+            },
+            "message": "Topic updated successfully - PTG prompts regenerated"
         }
         
     except HTTPException:

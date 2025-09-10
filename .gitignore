@@ -124,6 +124,9 @@ celerybeat.pid
 .venv
 env/
 venv/
+
+# Frontend build output
+web/build/
 ENV/
 env.bak/
 venv.bak/

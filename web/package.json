@@ -8,7 +8,9 @@
     "@testing-library/react": "^13.3.0",
     "@testing-library/user-event": "^14.2.0",
     "axios": "^1.4.0",
+    "cytoscape": "^3.33.1",
     "react": "^18.2.0",
+    "react-cytoscapejs": "^2.0.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.3.0",
     "react-scripts": "^5.0.1",
@@ -17,15 +19,20 @@
   "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build",
-  "test": "react-scripts test",
-  "eject": "react-scripts eject",
-  "dev": "npm start",
-  "lint": "eslint ./src --ext .js,.jsx,.ts,.tsx"
+    "test": "react-scripts test",
+    "eject": "react-scripts eject",
+    "dev": "npm start",
+    "lint": "eslint ./src --ext .js,.jsx,.ts,.tsx"
   },
   "eslintConfig": {
     "extends": [
       "react-app",
       "react-app/jest"
+    ]
+  },
+  "jest": {
+    "transformIgnorePatterns": [
+      "/node_modules/(?!axios|cytoscape|react-cytoscapejs).+\\.js$"
     ]
   },
   "browserslist": {

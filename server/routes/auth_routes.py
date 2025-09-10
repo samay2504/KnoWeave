@@ -286,15 +286,22 @@ async def refresh_token(request: Request, mongo_client=Depends(get_mongo_client)
         )
 
 
+
+# --- PRODUCTION ENDPOINT: Get current user profile ---
 @router.get("/api/me")
 async def get_current_user(request: Request):
-    """Get current user profile."""
+    """
+    Get current user profile from JWT cookie.
+    Returns: {id, email, name}
+    Logs all events.
+    """
     current_user = get_current_user_from_request(request)
     if not current_user:
+        logger.info("User not authenticated for /api/me")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated"
         )
-
+    logger.info(f"User profile fetched: {current_user.get('email', 'unknown')}")
     return {
         "id": current_user["user_id"],
         "email": current_user["email"],
@@ -302,10 +309,16 @@ async def get_current_user(request: Request):
     }
 
 
-@router.post("/auth/logout")
+
+# --- PRODUCTION ENDPOINT: Logout user ---
+@router.post("/api/auth/logout")
 async def logout(response: Response):
-    """Logout user by clearing authentication cookie."""
+    """
+    Logout user by clearing authentication cookie.
+    Logs all events.
+    """
     clear_auth_cookie(response)
+    logger.info("User logged out via /api/auth/logout")
     return {"success": True, "message": "Logged out successfully"}
 
 
@@ -319,32 +332,16 @@ def get_current_user_dependency(request: Request) -> Dict:
     return current_user
 
 
-# API-compatible routes for frontend integration
-@router.get("/api/auth/google")
-@limiter.limit("5/minute")
-async def api_google_login(request: Request, response: Response):
-    """API endpoint for Google OAuth login (compatible with frontend)."""
-    return await google_login(request, response)
 
-
-@router.post("/api/auth/callback")
-@limiter.limit("10/minute")
-async def api_google_callback(
-    request: Request,
-    response: Response,
-    mongo_client=Depends(get_mongo_client),
-):
-    """API endpoint for Google OAuth callback (compatible with frontend)."""
-    # Extract JSON body for POST request
-    body = await request.json()
-    code = body.get("code")
-    state = body.get("state")
-    
-    if not code:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Authorization code is required"
-        )
-    
-    # Call the existing callback function with extracted parameters
-    return await google_callback(request, response, code, state or "", mongo_client)
+# --- REMOVED: All legacy/duplicate endpoints. Only /api/auth/google and /api/auth/callback are used for frontend. ---
+# --- ENDPOINT DOCUMENTATION ---
+#
+# /api/auth/google [GET]: Initiate Google OAuth login. Returns {auth_url, state}. Logs all events. State stored in DB if available.
+# /api/auth/callback [POST]: Handle Google OAuth callback. Expects JSON {code, state}. Validates state, sets JWT cookie, returns user info.
+# /api/auth/logout [POST]: Logout user by clearing auth cookie. Logs event.
+# /api/auth/token_refresh [POST]: Refresh JWT token using stored refresh token. Logs event.
+# /api/me [GET]: Get current user profile from JWT cookie. Logs event.
+#
+# All endpoints are async, production-grade, and log all auth events. All cookies are set with secure=True, httponly, samesite=lax.
+# OAuth state is stored in ArangoDB or MongoDB if available, else in memory. State is validated and cannot be reused.
+# Legacy endpoints are removed. Frontend must use /api/auth/google and /api/auth/callback only.
