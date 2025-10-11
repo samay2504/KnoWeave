@@ -4,6 +4,9 @@ uvicorn[standard]==0.30.0
 python-multipart==0.0.20
 starlette==0.47.3
 
+# Async File I/O
+aiofiles==24.1.0
+
 # Authentication and Security
 authlib==1.6.3
 python-jose[cryptography]==3.3.0
