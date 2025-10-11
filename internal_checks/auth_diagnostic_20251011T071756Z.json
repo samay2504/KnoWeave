@@ -1,0 +1,175 @@
+{
+  "timestamp": "20251011T071756Z",
+  "analysis_phase": "root_cause_analysis",
+  "checklist": {
+    "A_frontend_behaviors": {
+      "1_credentials_include": {
+        "status": "FAIL",
+        "details": "AuthGoogle.jsx line 55-61: /api/auth/google uses credentials:'include' ✓ BUT Callback.jsx line 71: authFetch uses credentials:'include' ✓ - Need to verify all other API calls",
+        "fix_required": true,
+        "locations": [
+          "web/src/components/AuthGoogle.jsx:55-61",
+          "web/src/components/Callback.jsx:71",
+          "web/src/App.jsx:127 (suggestion_signal endpoint)"
+        ]
+      },
+      "2_race_condition_check": {
+        "status": "FAIL",
+        "details": "Callback.jsx does NOT wait for cookie to be set before checking session. After OAuth callback at line 71, it immediately processes response without retry logic for session cookie availability",
+        "fix_required": true,
+        "location": "web/src/components/Callback.jsx:24-133"
+      },
+      "3_token_storage": {
+        "status": "PASS",
+        "details": "Backend uses httpOnly cookies (auth_routes.py:231 set_auth_cookie). Frontend does not store tokens in localStorage - relies on cookies",
+        "fix_required": false
+      },
+      "4_jwt_cookie_mismatch": {
+        "status": "PASS",
+        "details": "Consistent: Backend sets httpOnly cookie (auth_routes.py:231), frontend expects cookie-based auth",
+        "fix_required": false
+      },
+      "5_cookie_wait_logic": {
+        "status": "FAIL",
+        "details": "Frontend does NOT wait for document.cookie to include session cookie. No retry mechanism in Callback.jsx after redirect",
+        "fix_required": true,
+        "location": "web/src/components/Callback.jsx"
+      },
+      "6_fetch_without_credentials": {
+        "status": "PARTIAL_FAIL",
+        "details": "AuthGoogle.jsx uses credentials include ✓, Callback.jsx uses authFetch (credentials:include) ✓, but App.jsx suggestion_signal and other endpoints need verification",
+        "fix_required": true,
+        "locations": ["web/src/App.jsx"]
+      }
+    },
+    "B_backend_behaviors": {
+      "1_cookie_setting": {
+        "status": "PASS",
+        "details": "auth_routes.py:231 calls set_auth_cookie which sets httpOnly=True, but SECURE flag and SameSite need environment awareness",
+        "attributes": {
+          "httponly": true,
+          "secure": "config.COOKIE_SECURE (True by default)",
+          "samesite": "config.COOKIE_SAMESITE (Lax)",
+          "path": "/",
+          "expires": "config.JWT_EXPIRE_SECONDS (3600)"
+        },
+        "issue": "cookie_secure=True on localhost http will cause browser to drop cookie",
+        "fix_required": true,
+        "location": "server/auth/google_oauth.py:200-211"
+      },
+      "2_secure_localhost_mismatch": {
+        "status": "FAIL",
+        "details": "server_config.py:97 sets cookie_secure=True by default. google_oauth.py:206 uses config.COOKIE_SECURE. On localhost http, browsers will drop Secure cookies",
+        "fix_required": true,
+        "locations": [
+          "server/server_config.py:97",
+          "server/auth/google_oauth.py:206"
+        ]
+      },
+      "3_cors_credentials": {
+        "status": "PASS",
+        "details": "app.py:262 sets allow_credentials=True and allow_origins includes localhost:3000",
+        "fix_required": false
+      },
+      "4_session_creation_order": {
+        "status": "NEEDS_VERIFICATION",
+        "details": "auth_routes.py:216-231: Exchange code -> get user info -> save user -> create JWT -> set cookie -> return response. Order appears correct but need to verify cookie is in response headers before redirect",
+        "fix_required": false,
+        "location": "server/routes/auth_routes.py:138-235"
+      },
+      "5_session_check_endpoint": {
+        "status": "PASS",
+        "details": "/api/me endpoint exists at auth_routes.py:282-295, returns user when cookie present",
+        "fix_required": false
+      }
+    },
+    "C_cookie_samesite_logic": {
+      "1_samesite_none_secure": {
+        "status": "FAIL",
+        "details": "Config sets SameSite=Lax (good for localhost) but Secure=True (bad for localhost http). Need environment-aware logic",
+        "fix_required": true,
+        "location": "server/server_config.py:97-98"
+      },
+      "2_localhost_compatibility": {
+        "status": "FAIL",
+        "details": "Using http://localhost for development but cookie_secure=True will prevent cookie from being set",
+        "fix_required": true
+      }
+    },
+    "D_refresh_flow": {
+      "1_refresh_endpoint": {
+        "status": "PASS",
+        "details": "/auth/google/token_refresh endpoint exists at auth_routes.py:238-280",
+        "fix_required": false
+      },
+      "2_frontend_refresh": {
+        "status": "NEEDS_IMPLEMENTATION",
+        "details": "Frontend does not implement silent refresh on 401. Should retry session check and call refresh endpoint before showing expired UI",
+        "fix_required": true,
+        "location": "web/src/components/Callback.jsx and web/src/App.jsx"
+      }
+    },
+    "E_race_condition": {
+      "1_cookie_before_redirect": {
+        "status": "FAIL",
+        "details": "Backend returns JSON response (not 302 redirect) at auth_routes.py:232-241. Frontend Callback.jsx line 78-98 processes immediately without waiting for cookie to be stored by browser",
+        "fix_required": true,
+        "root_cause": "Browser may not have finished storing Set-Cookie header when frontend makes next API call"
+      },
+      "2_retry_mechanism": {
+        "status": "NOT_IMPLEMENTED",
+        "details": "No retry mechanism exists in Callback.jsx for session verification after cookie set",
+        "fix_required": true,
+        "recommended_solution": "Implement waitForSession with 5 retries @ 200ms interval"
+      }
+    }
+  },
+  "root_causes_identified": [
+    {
+      "priority": "CRITICAL",
+      "issue": "Cookie Secure flag on localhost",
+      "description": "cookie_secure=True in config causes browsers to drop cookies on http://localhost. This is the PRIMARY cause of 'session expired' on initial load",
+      "files_affected": [
+        "server/server_config.py",
+        "server/core/config.py",
+        "server/auth/google_oauth.py"
+      ],
+      "fix": "Add environment-aware cookie flag logic: if debug/localhost, set secure=False"
+    },
+    {
+      "priority": "HIGH",
+      "issue": "Race condition in Callback flow",
+      "description": "Frontend processes OAuth callback response before browser finishes storing Set-Cookie header, causing immediate session checks to fail",
+      "files_affected": [
+        "web/src/components/Callback.jsx"
+      ],
+      "fix": "Implement retry logic with short delays (200ms x 5 attempts) for session verification after callback"
+    },
+    {
+      "priority": "MEDIUM",
+      "issue": "Missing credentials in some API calls",
+      "description": "App.jsx and other components may not consistently use credentials:'include' for all session-dependent endpoints",
+      "files_affected": [
+        "web/src/App.jsx"
+      ],
+      "fix": "Audit and add credentials:'include' to all authenticated API calls"
+    },
+    {
+      "priority": "MEDIUM",
+      "issue": "No silent refresh on 401",
+      "description": "Frontend immediately shows 'session expired' on 401 without attempting silent token refresh",
+      "files_affected": [
+        "web/src/components/Callback.jsx",
+        "web/src/App.jsx"
+      ],
+      "fix": "Add refresh token logic to retry with /auth/google/token_refresh on 401"
+    }
+  ],
+  "next_steps": [
+    "1. Fix cookie_secure flag to be environment-aware",
+    "2. Add waitForSession retry logic in Callback.jsx",
+    "3. Add credentials:'include' to all authenticated API calls",
+    "4. Implement silent refresh mechanism",
+    "5. Test full auth flow after fixes"
+  ]
+}

@@ -179,25 +179,38 @@ def generate_state() -> str:
 
 
 def set_auth_cookie(response: Response, token: str) -> None:
-    """Set secure authentication cookie."""
+    """Set secure authentication cookie with environment-aware flags."""
+    # Determine secure flag based on environment
+    # In development/localhost with http, secure must be False
+    is_dev = config.environment.lower() in ('development', 'dev', 'local')
+    cookie_secure = False if is_dev else config.COOKIE_SECURE
+    
+    # SameSite should be Lax for localhost, can be stricter in production
+    cookie_samesite = "lax" if is_dev else config.COOKIE_SAMESITE.lower()
+    
     response.set_cookie(
         key="auth_token",
         value=token,
         max_age=config.JWT_EXPIRE_SECONDS,
         httponly=True,
-        secure=config.COOKIE_SECURE,
-        samesite="lax",
+        secure=cookie_secure,
+        samesite=cookie_samesite,
         domain=config.COOKIE_DOMAIN if config.COOKIE_DOMAIN else None,
     )
 
 
 def clear_auth_cookie(response: Response) -> None:
-    """Clear authentication cookie."""
+    """Clear authentication cookie with environment-aware flags."""
+    # Match the same environment-aware logic as set_auth_cookie
+    is_dev = config.environment.lower() in ('development', 'dev', 'local')
+    cookie_secure = False if is_dev else config.COOKIE_SECURE
+    cookie_samesite = "lax" if is_dev else config.COOKIE_SAMESITE.lower()
+    
     response.delete_cookie(
         key="auth_token",
         httponly=True,
-        secure=config.COOKIE_SECURE,
-        samesite="lax",
+        secure=cookie_secure,
+        samesite=cookie_samesite,
         domain=config.COOKIE_DOMAIN if config.COOKIE_DOMAIN else None,
     )
 

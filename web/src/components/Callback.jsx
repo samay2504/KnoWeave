@@ -87,6 +87,36 @@ const Callback = ({ onAuthSuccess, onAuthFailure }) => {
           throw new Error('User information not received from server.');
         }
 
+        // Wait for session cookie to be available (retry mechanism for race condition)
+        const waitForSession = async (maxAttempts = 5, delayMs = 200) => {
+          for (let attempt = 0; attempt < maxAttempts; attempt++) {
+            try {
+              const sessionCheck = await authFetch(`${API_BASE_URL}/api/me`, {
+                method: 'GET',
+                credentials: 'include',
+              });
+              
+              if (sessionCheck.ok) {
+                const sessionData = await sessionCheck.json();
+                if (sessionData && sessionData.id) {
+                  return sessionData;
+                }
+              }
+            } catch (err) {
+              console.log(`Session check attempt ${attempt + 1} failed, retrying...`);
+            }
+            
+            // Wait before next attempt (except on last attempt)
+            if (attempt < maxAttempts - 1) {
+              await new Promise(resolve => setTimeout(resolve, delayMs));
+            }
+          }
+          throw new Error('Session not ready after multiple attempts');
+        };
+
+        // Verify session is ready before proceeding
+        await waitForSession();
+
         setUserInfo(data.user);
         setProgress(100);
         setStatus('success');

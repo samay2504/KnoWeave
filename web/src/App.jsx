@@ -132,6 +132,7 @@ const Dashboard = ({ user }) => {
     try {
       const response = await fetch(`${API_BASE_URL}/api/session/${sessionId}/suggestion_signal`, {
         method: 'POST',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
         },
