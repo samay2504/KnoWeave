@@ -13,6 +13,14 @@ import json
 import asyncio
 from datetime import datetime
 
+# Import service status from dependencies
+try:
+    from dependencies import service_status
+    DEPENDENCIES_AVAILABLE = True
+except ImportError:
+    DEPENDENCIES_AVAILABLE = False
+    service_status = {}
+
 # Import optional dependencies with fallbacks for Python 3.12+ compatibility
 try:
     from motor.motor_asyncio import AsyncIOMotorClient
@@ -36,7 +44,10 @@ except ImportError:
     psutil = None
 
 import os
+import logging
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 # Import server components
 import sys
@@ -348,15 +359,57 @@ async def basic_health_check():
         raise HTTPException(status_code=503, detail=f"Health check failed: {str(e)}")
 
 
-@router.get("/health/detailed", response_model=DetailedHealthResponse)
+@router.get("/health/detailed")
 async def detailed_health_check():
-    """Detailed health check with all components"""
+    """Detailed health check with all components - returns 200 with partial status"""
     try:
-        return await perform_health_checks()
+        current_time = time.time()
+        components = {}
+        
+        # Get status from dependency container
+        if DEPENDENCIES_AVAILABLE and service_status:
+            for service_name, status_info in service_status.items():
+                components[service_name] = {
+                    'status': status_info.get('status', 'unknown'),
+                    'message': status_info.get('message', ''),
+                    'last_checked': status_info.get('last_checked')
+                }
+        else:
+            # Fallback status
+            components = {
+                'mongo': {'status': 'unknown', 'message': 'service_status unavailable', 'last_checked': None},
+                'arango': {'status': 'unknown', 'message': 'service_status unavailable', 'last_checked': None},
+                'llm': {'status': 'unknown', 'message': 'service_status unavailable', 'last_checked': None},
+                'json_fallback': {'status': 'ok', 'message': 'available', 'last_checked': current_time}
+            }
+        
+        # Determine overall status
+        statuses = [c['status'] for c in components.values()]
+        if all(s == 'ok' for s in statuses):
+            overall_status = 'healthy'
+        elif any(s == 'unavailable' for s in statuses):
+            overall_status = 'degraded'
+        else:
+            overall_status = 'healthy'
+        
+        # Always return 200 OK with status in body
+        return {
+            'overall_status': overall_status,
+            'timestamp': datetime.utcnow().isoformat(),
+            'uptime_seconds': current_time - app_start_time,
+            'services': components,
+            'system_metrics': get_system_metrics() if PSUTIL_AVAILABLE else {}
+        }
     except Exception as e:
-        raise HTTPException(
-            status_code=503, detail=f"Detailed health check failed: {str(e)}"
-        )
+        # Even on error, return 200 with error details
+        logger.error(f"Detailed health check error: {e}")
+        return {
+            'overall_status': 'error',
+            'timestamp': datetime.utcnow().isoformat(),
+            'uptime_seconds': time.time() - app_start_time,
+            'services': {},
+            'error': str(e)
+        }
 
 
 @router.get("/health/components/{component_name}")
