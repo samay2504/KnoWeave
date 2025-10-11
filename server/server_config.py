@@ -350,6 +350,11 @@ class ServerConfig(BaseSettings):
         """Get cookie secure flag"""
         return self.cookie_secure
 
+    @property
+    def COOKIE_SAMESITE(self) -> str:
+        """Get cookie SameSite attribute"""
+        return self.cookie_samesite
+
     def get_llm_config(self) -> Dict[str, Any]:
         """Get LLM configuration for provider initialization"""
         return {

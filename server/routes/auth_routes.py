@@ -18,6 +18,13 @@ from auth.google_oauth import (
     get_current_user_from_request,
 )
 
+# Import config for environment-aware cookie flags
+try:
+    from server_config import config as server_config
+except ImportError:
+    from server.server_config import ServerConfig
+    server_config = ServerConfig()
+
 # Use delayed import to avoid circular dependency
 def get_mongo_client():
     """Get mongo client with delayed import to avoid circular dependency"""
@@ -98,13 +105,14 @@ async def google_login(request: Request, response: Response):
 
         auth_url = google_oauth.generate_auth_url(state)
 
-        # Store state in secure cookie as well
+        # Store state in secure cookie as well with environment-aware flags
+        is_dev = server_config.environment.lower() in ('development', 'dev', 'local')
         response.set_cookie(
             "oauth_state",
             state,
             max_age=300,  # 5 minutes to match server-side expiration
             httponly=True,
-            secure=False,  # Set to True in production with HTTPS
+            secure=False if is_dev else True,
             samesite="lax",
         )
 
@@ -141,22 +149,28 @@ async def google_callback(
         # Clean up expired states first
         clean_expired_states()
         
-        # Validate state
+        # Validate state using cookie (primary) and server-side store (fallback)
         stored_state = request.cookies.get("oauth_state")
         
-        # Check if state matches cookie and is still valid
-        if not stored_state or stored_state != state:
+        # Check if state matches cookie (this is the primary validation)
+        cookie_valid = stored_state and stored_state == state
+        
+        # Check in-memory state (secondary validation, may have been consumed)
+        server_state_valid = is_state_valid(state)
+        
+        if not cookie_valid and not server_state_valid:
             logger.warning(
-                f"Invalid OAuth state from IP: {get_remote_address(request)}"
+                f"Invalid OAuth state from IP: {get_remote_address(request)} (cookie={bool(stored_state)}, server={server_state_valid})"
             )
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid or expired authentication session. Please try logging in again.",
             )
         
-        # Check in-memory state with expiration and consume it
+        # Consume server-side state if it still exists (idempotent)
         state_data = consume_state(state)
-        if not state_data:
+        if not state_data and not cookie_valid:
+            # Only fail if BOTH cookie AND server state are invalid
             logger.warning(
                 f"OAuth state expired or not found for IP: {get_remote_address(request)}"
             )

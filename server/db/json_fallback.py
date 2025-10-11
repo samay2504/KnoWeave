@@ -5,11 +5,19 @@ JSON Fallback Storage for local backup and offline operation
 import json
 import logging
 import asyncio
-import aiofiles
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, List, Optional, Union
 from dataclasses import dataclass, asdict
+
+# Try to import aiofiles, fallback to sync file IO if not available
+try:
+    import aiofiles
+    AIOFILES_AVAILABLE = True
+except ImportError:
+    aiofiles = None
+    AIOFILES_AVAILABLE = False
+    logging.getLogger(__name__).warning("aiofiles not available; using sync fallback for JSON storage")
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +48,39 @@ class JSONFallbackClient:
         for directory in [self.sessions_dir, self.snapshots_dir, self.archive_dir]:
             directory.mkdir(parents=True, exist_ok=True)
 
+    async def _async_write_json(self, file_path: Path, data: Any) -> None:
+        """Write JSON data to file with async/sync fallback"""
+        json_str = json.dumps(data, indent=2, ensure_ascii=False, default=str)
+        
+        if AIOFILES_AVAILABLE:
+            async with aiofiles.open(file_path, "w", encoding="utf-8") as f:
+                await f.write(json_str)
+        else:
+            # Fallback to sync IO in thread pool
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(None, self._sync_write_json, file_path, json_str)
+    
+    def _sync_write_json(self, file_path: Path, json_str: str) -> None:
+        """Sync write JSON string to file"""
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(json_str)
+    
+    async def _async_read_json(self, file_path: Path) -> Any:
+        """Read JSON data from file with async/sync fallback"""
+        if AIOFILES_AVAILABLE:
+            async with aiofiles.open(file_path, "r", encoding="utf-8") as f:
+                content = await f.read()
+                return json.loads(content)
+        else:
+            # Fallback to sync IO in thread pool
+            loop = asyncio.get_event_loop()
+            return await loop.run_in_executor(None, self._sync_read_json, file_path)
+    
+    def _sync_read_json(self, file_path: Path) -> Any:
+        """Sync read JSON from file"""
+        with open(file_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+
     def _get_session_file(self, session_id: str) -> Path:
         """Get the file path for a session"""
         return self.sessions_dir / f"{session_id}.json"
@@ -62,13 +103,8 @@ class JSONFallbackClient:
                 "format_version": "1.0",
             }
 
-            # Write file asynchronously
-            async with aiofiles.open(session_file, "w", encoding="utf-8") as f:
-                await f.write(
-                    json.dumps(
-                        data_with_meta, indent=2, ensure_ascii=False, default=str
-                    )
-                )
+            # Write file using helper (handles async/sync fallback)
+            await self._async_write_json(session_file, data_with_meta)
 
             logger.debug(f"Saved session {session_id} to {session_file}")
             return True
@@ -85,9 +121,8 @@ class JSONFallbackClient:
             if not session_file.exists():
                 return None
 
-            async with aiofiles.open(session_file, "r", encoding="utf-8") as f:
-                content = await f.read()
-                data = json.loads(content)
+            # Read file using helper (handles async/sync fallback)
+            data = await self._async_read_json(session_file)
 
             logger.debug(f"Loaded session {session_id} from {session_file}")
             return data
