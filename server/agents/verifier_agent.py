@@ -93,13 +93,24 @@ class VerifierAgent:
         logger.info("Verifier Agent cleanup completed")
 
     async def invoke(
-        self, workspace: Dict[str, Any], agent_config: Dict[str, Any]
+        self, workspace, agent_config
     ) -> Dict[str, Any]:
         """
         Blueprint-compliant invoke method for Verifier Agent
         Validates content quality, consistency, and constraints.
         Now prompt-driven and supports domain-specific checks.
         """
+        # Accept both dict and Pydantic model input for workspace and agent_config
+        from server.utils.schemas import WorkspaceSchema
+        if not isinstance(workspace, dict) and hasattr(workspace, 'dict'):
+            workspace = workspace.dict()
+        if not isinstance(agent_config, dict) and hasattr(agent_config, 'dict'):
+            agent_config = agent_config.dict()
+        # Optionally validate workspace schema
+        try:
+            workspace = WorkspaceSchema.parse_obj(workspace).dict()
+        except Exception:
+            pass
         session_id = workspace.get('session_id', 'unknown')
         logger.debug(f"Verifying content for session {session_id}")
 

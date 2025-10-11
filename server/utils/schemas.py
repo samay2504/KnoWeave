@@ -61,13 +61,11 @@ if BaseModel != object:
 
     class BaseSchema(BaseModel):
         """Base schema with common configuration"""
-
         if PYDANTIC_V2:
             model_config = ConfigDict(
                 extra="forbid", validate_assignment=True, use_enum_values=True
             )
         else:
-
             class Config:
                 extra = "forbid"
                 validate_assignment = True
@@ -161,16 +159,16 @@ class PolicySchema(BaseSchema):
 
 
 class MetadataSchema(BaseSchema):
-    """Schema for session metadata"""
-
+    """Schema for session metadata (allows extra fields for forward compatibility)"""
     title: Optional[str] = Field(None, description="Session title")
     description: Optional[str] = Field(None, description="Session description")
     tags: List[str] = Field(default_factory=list, description="Session tags")
     word_count: int = Field(0, ge=0, description="Current word count")
-    last_activity: Optional[datetime] = Field(
-        None, description="Last activity timestamp"
-    )
+    last_activity: Optional[datetime] = Field(None, description="Last activity timestamp")
     user_notes: str = Field("", description="User notes")
+
+    class Config:
+        extra = "allow"
 
 
 class WorkspaceSchema(BaseSchema):

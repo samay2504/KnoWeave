@@ -337,6 +337,11 @@ class PerceptionAgent:
         Blueprint-compliant invoke method for Perception Agent
         Analyzes text and extracts surface features as per blueprint specification
         """
+        # Convert workspace to dict if it's a Pydantic model
+        if hasattr(workspace, 'dict'):
+            workspace = workspace.dict()
+        elif hasattr(workspace, 'model_dump'):
+            workspace = workspace.model_dump()
         if not self.initialized:
             await self.initialize()
 
@@ -365,13 +370,28 @@ class PerceptionAgent:
                 result = await self._analyze_with_patterns(text)
 
             # Convert PerceptionOutput to blueprint format
-            return self._convert_to_blueprint_format(result, text)
+            output = self._convert_to_blueprint_format(result, text)
+            # --- Strict post-processing: filter output for schema compliance ---
+            try:
+                from server.utils.llm_output_filter import filter_llm_output
+                from server.utils.schemas import PerceptionOutput
+                output = filter_llm_output(output, PerceptionOutput)
+            except Exception as e:
+                logger.warning(f"PerceptionAgent post-processing failed: {e}")
+            return output
 
         except Exception as e:
             logger.error(f"Text analysis failed: {e}")
             # Fallback to pattern-based analysis
             result = await self._analyze_with_patterns(text)
-            return self._convert_to_blueprint_format(result, text)
+            output = self._convert_to_blueprint_format(result, text)
+            try:
+                from server.utils.llm_output_filter import filter_llm_output
+                from server.utils.schemas import PerceptionOutput
+                output = filter_llm_output(output, PerceptionOutput)
+            except Exception as e:
+                logger.warning(f"PerceptionAgent post-processing failed (fallback): {e}")
+            return output
 
     def _convert_to_blueprint_format(
         self, perception_output: PerceptionOutput, text: str

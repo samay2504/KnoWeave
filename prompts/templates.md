@@ -20,7 +20,9 @@ OUTPUT_SCHEMA:
 {schema}
 RESPONSE_INSTRUCTIONS:
 - Reply ONLY with valid JSON matching OUTPUT_SCHEMA.
+- DO NOT include any extra fields or commentary.
 - Mark any invented or unverified facts under "flags".
+- If previous response failed JSON validation, strictly produce valid JSON only (no commentary).
 - Temperature: {temperature}
 ```
 
@@ -106,6 +108,8 @@ RESPONSE_INSTRUCTIONS:
 - Identify key events and their actors
 - Detect point of view and tense consistency
 - Mark low-confidence extractions in flags
+- DO NOT include any extra fields or commentary.
+- If previous response failed JSON validation, strictly produce valid JSON only (no commentary).
 - Temperature: 0.2
 ```
 
@@ -155,6 +159,8 @@ RESPONSE_INSTRUCTIONS:
 - Ensure each branch is semantically different (min embedding distance)
 - Preserve established characters, POV, and tense
 - Mark any new/unverified facts in flags
+- DO NOT include any extra fields or commentary.
+- If previous response failed JSON validation, strictly produce valid JSON only (no commentary).
 - Conservative: low risk, established patterns
 - Balanced: moderate novelty with consistency
 - Creative: higher novelty, explore possibilities
@@ -216,6 +222,8 @@ RESPONSE_INSTRUCTIONS:
 - Prune low-importance nodes when limit exceeded
 - Support backtracking to specified depth
 - Archive rather than delete for recovery
+- DO NOT include any extra fields or commentary.
+- If previous response failed JSON validation, strictly produce valid JSON only (no commentary).
 - Temperature: 0.1
 ```
 
@@ -266,6 +274,8 @@ RESPONSE_INSTRUCTIONS:
 - Cross-reference facts against knowledge base
 - Flag potential bias or problematic content
 - Provide specific correction suggestions
+- DO NOT include any extra fields or commentary.
+- If previous response failed JSON validation, strictly produce valid JSON only (no commentary).
 - Temperature: 0.1
 ```
 
@@ -324,6 +334,8 @@ RESPONSE_INSTRUCTIONS:
 - Rank branches by overall score
 - Provide specific strengths and weaknesses
 - Make accept/revise/reject recommendations
+- DO NOT include any extra fields or commentary.
+- If previous response failed JSON validation, strictly produce valid JSON only (no commentary).
 - Temperature: 0.2
 ```
 

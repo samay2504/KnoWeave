@@ -1,3 +1,13 @@
+from utils.schemas import SuggestionMode
+
+def coerce_suggestion_mode(value):
+    """Coerce or validate suggestion_mode to enum value, fallback to ON_DEMAND if invalid."""
+    try:
+        if isinstance(value, SuggestionMode):
+            return value
+        return SuggestionMode(value)
+    except Exception:
+        return SuggestionMode.ON_DEMAND
 """
 Workspace (Blackboard) System for Human-AI Co-Creation
 Manages session state, persistence to MongoDB and JSON fallback
@@ -57,7 +67,7 @@ class Workspace:
             "graph": {"nodes": [], "edges": []},
             "policy": {
                 "max_backtrack": 2,
-                "suggestion_mode": "smart",
+                "suggestion_mode": SuggestionMode.ON_DEMAND.value,
                 "max_branches": 3,
             },
             "metadata": {
@@ -109,6 +119,9 @@ class Workspace:
                 doc = await collection.find_one({"session_id": self.session_id})
                 if doc:
                     doc.pop("_id", None)  # Remove MongoDB _id
+                    # Enforce enum validation for suggestion_mode
+                    if "policy" in doc and "suggestion_mode" in doc["policy"]:
+                        doc["policy"]["suggestion_mode"] = coerce_suggestion_mode(doc["policy"]["suggestion_mode"]).value
                     self.data = doc
                     logger.info(f"Workspace loaded from MongoDB: {self.session_id}")
                     return True

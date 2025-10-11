@@ -66,12 +66,23 @@ class EvaluatorAgent:
         self.audit_log_dir = config.get("audit_log_dir", "internal_checks")
 
     async def invoke(
-        self, workspace: Dict[str, Any], agent_config: Dict[str, Any]
+        self, workspace, agent_config
     ) -> Dict[str, Any]:
         """
         Blueprint-compliant invoke method for Evaluator Agent.
         Scores and ranks branches using a prompt-driven approach.
         """
+        # Accept both dict and Pydantic model input for workspace and agent_config
+        from server.utils.schemas import WorkspaceSchema
+        if not isinstance(workspace, dict) and hasattr(workspace, 'dict'):
+            workspace = workspace.dict()
+        if not isinstance(agent_config, dict) and hasattr(agent_config, 'dict'):
+            agent_config = agent_config.dict()
+        # Optionally validate workspace schema
+        try:
+            workspace = WorkspaceSchema.parse_obj(workspace).dict()
+        except Exception:
+            pass
         prompt_payload = agent_config.get("prompt_payload")
         if not prompt_payload or not self.llm_provider:
             logger.error("Evaluator agent requires a prompt payload and LLM provider.")

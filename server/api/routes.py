@@ -1,3 +1,16 @@
+
+from fastapi import FastAPI, APIRouter
+from fastapi.openapi.utils import get_openapi
+
+
+app = FastAPI()
+
+# Create router
+router = APIRouter(prefix="/api/session", tags=["co-creation"])
+
+# Mount the co-creation router
+app.include_router(router)
+
 """
 API Routes - Human-AI Co-Creation System
 REST API endpoints for the server
@@ -36,8 +49,7 @@ class AgentOrchestrator:
     async def get_perception_agent(self):
         try:
             from agents.perception_agent import PerceptionAgent
-
-            return PerceptionAgent(self.config, self.llm_provider)
+            return PerceptionAgent(self.config)
         except Exception as e:
             logger.warning(f"Failed to load PerceptionAgent: {e}")
             return None
@@ -196,7 +208,8 @@ async def create_session(
     try:
         request_data = await request.json()
         topic = request_data.get("topic")
-        mode = request_data.get("mode", "story")
+        # Accept both 'mode' and 'topic_descriptor' for compatibility
+        mode = request_data.get("topic_descriptor") or request_data.get("mode", "story")
         user_preferences = request_data.get("user_preferences")
         initial_content = request_data.get("initial_content", "")
         policy = request_data.get("policy")
@@ -225,7 +238,6 @@ async def create_session(
             topic_descriptor=mode,
             initial_content=initial_content,
             policy=policy_obj,
-            user_preferences=user_preferences,
         )
 
         workspace = await session_manager.create_session(request_obj)

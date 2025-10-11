@@ -31,12 +31,23 @@ class PlannerGeneratorAgent:
         self.audit_log_dir = config.get("audit_log_dir", "internal_checks")
 
     async def invoke(
-        self, workspace: Dict[str, Any], agent_config: Dict[str, Any]
+        self, workspace, agent_config
     ) -> Dict[str, Any]:
         """
         Blueprint-compliant invoke method for Planner/Generator Agent
         Generates candidate branches using a prompt-driven approach.
         """
+        # Accept both dict and Pydantic model input for workspace and agent_config
+        from server.utils.schemas import WorkspaceSchema
+        if not isinstance(workspace, dict) and hasattr(workspace, 'dict'):
+            workspace = workspace.dict()
+        if not isinstance(agent_config, dict) and hasattr(agent_config, 'dict'):
+            agent_config = agent_config.dict()
+        # Optionally validate workspace schema
+        try:
+            workspace = WorkspaceSchema.parse_obj(workspace).dict()
+        except Exception:
+            pass
         prompt_payload = agent_config.get("prompt_payload")
         session_id = workspace.get("session_id", "unknown")
         
@@ -67,6 +78,7 @@ class PlannerGeneratorAgent:
                 logger.warning(f"🔍 PTG Schema type: {type(prompt_payload['schema'])}")
                 logger.warning(f"🔍 PTG Schema preview: {str(prompt_payload['schema'])[:200]}...")
             
+
             llm_response = await self.llm_provider.generate(
                 prompt=prompt_payload["prompt"],
                 temperature=prompt_payload.get("temperature", 0.7),
@@ -75,6 +87,29 @@ class PlannerGeneratorAgent:
                 session_id=session_id,
                 agent="planner"
             )
+
+            # --- Strict post-processing: filter LLM output for schema compliance ---
+            from server.utils.llm_output_filter import filter_llm_output
+            from server.utils.schemas import ProjectionSchema
+
+            if "branches" in llm_response:
+                filtered_branches = []
+                for branch in llm_response["branches"]:
+                    try:
+                        filtered = filter_llm_output(branch, ProjectionSchema)
+                        filtered_branches.append(filtered)
+                    except Exception as e:
+                        logger.warning(f"Branch post-processing failed: {e}")
+                        # Log the raw branch for debugging
+                        logger.warning(f"Raw branch that failed validation: {json.dumps(branch)[:500]}...")
+                        # Always log the full raw LLM response for traceability
+                        logger.warning(f"Full raw LLM response (on validation failure): {json.dumps(llm_response)[:1000]}...")
+                # Fallback: If all branches are filtered out, log and return a fallback branch
+                if not filtered_branches:
+                    logger.error("❌ All branches were filtered out as invalid. Returning fallback branch.")
+                    logger.warning(f"Raw LLM response for debugging: {json.dumps(llm_response)[:1000]}...")
+                    return self._generate_fallback_response(session_id, agent_config.get("max_branches", 1))
+                llm_response["branches"] = filtered_branches
 
             # Debug: Log the LLM response structure
             logger.warning(f"🔍 LLM response keys: {list(llm_response.keys())}")
@@ -113,24 +148,34 @@ class PlannerGeneratorAgent:
                 "timestamp": datetime.utcnow().isoformat()
             }
 
-            # Add domain metadata and normalize each branch to ProjectionSchema fields
+
+            # Defensive coding: Only save projections if valid and non-empty
             topic_family = agent_config.get("topic_family", "unknown")
             normalized_branches = []
+
             for branch in llm_response.get("branches", []):
-                # Flatten content if present
                 content = branch.get("content", {})
-                # Map required fields
+                # Coerce title and paragraph to strings, default to empty string if missing or invalid
                 title = content.get("title") or branch.get("title") or "Untitled"
                 paragraph = content.get("paragraph") or branch.get("paragraph") or ""
+                # Production-grade: Ensure both are strings
+                if not isinstance(title, str):
+                    logger.warning(f"Branch title is not a string, coercing to empty string. Branch: {json.dumps(branch)[:200]}...")
+                    title = str(title) if title is not None else ""
+                if not isinstance(paragraph, str):
+                    logger.warning(f"Branch paragraph is not a string, coercing to empty string. Branch: {json.dumps(branch)[:200]}...")
+                    paragraph = str(paragraph) if paragraph is not None else ""
+                # If after coercion, still not valid, skip this branch
+                if not title.strip() or not paragraph.strip():
+                    logger.warning(f"Skipping branch due to empty title or paragraph after coercion. Branch: {json.dumps(branch)[:200]}...")
+                    continue
                 events = content.get("events") or branch.get("events") or []
                 flags = content.get("flags") or branch.get("flags") or {}
                 branch_type = content.get("branch_type") or branch.get("branch_type") or "balanced"
                 score = content.get("score") or branch.get("score")
-                # Add domain metadata
                 meta = branch.get("meta", {})
                 meta["domain"] = topic_family
                 meta["topic_family"] = topic_family
-                # Build normalized branch
                 normalized = {
                     "title": title,
                     "paragraph": paragraph,
@@ -142,7 +187,11 @@ class PlannerGeneratorAgent:
                 }
                 normalized_branches.append(normalized)
 
-            llm_response["branches"] = normalized_branches
+            # Only save projections if normalized_branches is not empty
+            if not normalized_branches:
+                logger.warning("No valid projections to save. Skipping projection saving.")
+            else:
+                llm_response["branches"] = normalized_branches
 
             if self.prompt_audit_enabled:
                 self._log_prompt_audit(prompt_payload, llm_response)

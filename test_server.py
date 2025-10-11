@@ -4,6 +4,9 @@ Test server for Human-AI Co-Creation platform
 Provides basic endpoints for frontend testing without heavy ML dependencies
 """
 
+# Production fix: Import BaseModel from pydantic for response models
+from pydantic import BaseModel
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -13,6 +16,42 @@ from datetime import datetime
 from typing import Dict, Any, List, Optional
 import asyncio
 import logging
+
+# --- Production-grade minimal model and DB fixes ---
+import uuid
+
+# In-memory DBs for sessions and snapshots
+sessions_db = {}
+snapshots_db = {}
+
+# Minimal request/response models for endpoints
+class NewSessionRequest(BaseModel):
+    user_id: str
+    topic: str
+    initial_content: str = ""
+
+class SessionResponse(BaseModel):
+    session_id: str
+    workspace: Dict[str, Any]
+    status: str
+    message: str
+
+class SuggestRequest(BaseModel):
+    mode: str
+    options: Dict[str, Any]
+    constraints: Dict[str, Any] = {}
+
+class SuggestionsResponse(BaseModel):
+    session_id: str
+    projections: Dict[str, Any]
+    status: str
+    message: str
+
+class AcceptBranchRequest(BaseModel):
+    branch_id: str
+
+class BacktrackRequest(BaseModel):
+    steps: int = 1
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)

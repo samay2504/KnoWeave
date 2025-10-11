@@ -180,12 +180,23 @@ class GraphManagerAgent:
         logger.info("Graph Manager Agent cleanup completed")
 
     async def invoke(
-        self, workspace: Dict[str, Any], agent_config: Dict[str, Any]
+        self, workspace, agent_config
     ) -> Dict[str, Any]:
         """
         Main agent invoke method - manages knowledge graph for workspace
         Uses dynamic prompts from Session Manager's PTG
         """
+        # Accept both dict and Pydantic model input for workspace and agent_config
+        from server.utils.schemas import WorkspaceSchema
+        if not isinstance(workspace, dict) and hasattr(workspace, 'dict'):
+            workspace = workspace.dict()
+        if not isinstance(agent_config, dict) and hasattr(agent_config, 'dict'):
+            agent_config = agent_config.dict()
+        # Optionally validate workspace schema
+        try:
+            workspace = WorkspaceSchema.parse_obj(workspace).dict()
+        except Exception:
+            pass
         # Get workspace data
         topic_content = workspace.get("topic_content", "")
         perception_data = workspace.get("perception_analysis", {})

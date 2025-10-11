@@ -8,9 +8,10 @@
   },
   
   "agent_templates": {
-    "session_manager": {
-      "system_role": "You are a Session Manager assistant for Human-AI Co-Creation. Manage user sessions, preferences, and orchestrate other agents.",
-      "temperature": 0.1,
+  "session_manager": {
+  "system_role": "You are a Session Manager assistant for Human-AI Co-Creation. Manage user sessions, preferences, and orchestrate other agents.",
+  "temperature": 0.1,
+  "output_instructions": "Reply ONLY with valid JSON matching the output_schema. DO NOT include any extra fields or commentary. If previous response failed JSON validation, strictly produce valid JSON only (no commentary). Mark any invented or unverified facts under 'flags'.",
       "output_schema": {
         "type": "object",
         "required": ["action", "status", "call_metadata"],
@@ -92,8 +93,9 @@
     },
     
     "perception": {
-      "system_role": "You are a Perception Agent for content analysis. Extract entities, events, tone, POV, and metadata from content.",
-      "temperature": 0.0,
+  "system_role": "You are a Perception Agent for content analysis. Extract entities, events, tone, POV, and metadata from content.",
+  "temperature": 0.0,
+  "output_instructions": "Extract all mentioned characters with traits. Identify key events and their actors. Detect point of view and tense consistency. Mark low-confidence extractions in flags. DO NOT include any extra fields or commentary. If previous response failed JSON validation, strictly produce valid JSON only (no commentary).",
       "output_schema": {
         "type": "object",
         "required": ["entities", "events", "metadata", "call_metadata"],
@@ -220,8 +222,9 @@
     },
     
     "planner": {
-      "system_role": "You are a Planner/Generator Agent. Create 1-3 distinct continuation branches for content based on constraints and context.",
-      "temperature": 0.3,
+  "system_role": "You are a Planner/Generator Agent. Create 1-3 distinct continuation branches for content based on constraints and context. You MUST return a JSON object with a 'branches' array, each branch containing: title (string), content (string), style (conservative|balanced|creative), events (array of objects with summary and participants), and confidence (number 0-1). All fields must be present and of the correct type. If content is ambiguous, inappropriate, or NSFW (including violence, graphic, or sexual content), you MUST still generate branches, but flag them in the 'flags' field. Do not censor or omit any user content, but always flag problematic or NSFW material.",
+  "temperature": 0.3,
+  "output_instructions": "Generate exactly 3 distinct branches (A, B, C) if possible. Each branch MUST include: title (string, non-empty), content (string, non-empty), style (conservative|balanced|creative), events (array of objects with summary and participants), and confidence (number 0-1). Ensure each branch is semantically different (min embedding distance). Preserve established characters, POV, and tense. Mark any new/unverified facts in flags. If content is ambiguous, inappropriate, or NSFW (including violence, graphic, or sexual content), do NOT censor or omit, but set a flag in the 'flags' field (e.g., 'nsfw', 'violence', 'graphic', 'ambiguous'). DO NOT include any extra fields or commentary. If previous response failed JSON validation, strictly produce valid JSON only (no commentary). Conservative: low risk, established patterns. Balanced: moderate novelty with consistency. Creative: higher novelty, explore possibilities. IMPORTANT: All 'title' and 'content' fields MUST be non-empty strings. Never return null, empty, or non-string values for these fields.",
       "output_schema": {
         "type": "object",
         "required": ["branches", "call_metadata"],
@@ -346,13 +349,80 @@
               "processing_time_ms": 350
             }
           }
+        },
+        {
+          "input": {
+            "story_so_far": "The message was unclear. Maybe it was a warning, or maybe just a mistake.",
+            "topic": "story",
+            "constraints": {"pov": "third", "tense": "past"}
+          },
+          "output": {
+            "branches": [
+              {
+                "title": "Uncertain Motives",
+                "content": "No one could tell if the message was a threat or a simple error. The characters debated its meaning late into the night.",
+                "style": "balanced",
+                "events": [
+                  {"summary": "Characters debate message meaning", "participants": ["All"]}
+                ],
+                "confidence": 0.7
+              }
+            ],
+            "flags": {"unverified_facts": ["message intent"], "contradictions": [], "new_characters": [], "ambiguous": ["message meaning"]},
+            "call_metadata": {"timestamp": "2025-09-13T00:00:00Z", "agent_type": "planner", "processing_time_ms": 200}
+          }
+        },
+        {
+          "input": {
+            "story_so_far": "Atharva hopped on a horse, the horse got a little horny.",
+            "topic": "story",
+            "constraints": {"pov": "third", "tense": "past"}
+          },
+          "output": {
+            "branches": [
+              {
+                "title": "Unexpected Behavior",
+                "content": "The horse's sudden excitement startled Atharva, who struggled to keep his balance as the animal pranced unpredictably.",
+                "style": "creative",
+                "events": [
+                  {"summary": "Horse acts out of character", "participants": ["Atharva", "Horse"]}
+                ],
+                "confidence": 0.6
+              }
+            ],
+            "flags": {"nsfw": ["horse behavior"], "unverified_facts": [], "contradictions": [], "new_characters": []},
+            "call_metadata": {"timestamp": "2025-09-13T00:00:00Z", "agent_type": "planner", "processing_time_ms": 180}
+          }
+        },
+        {
+          "input": {
+            "story_so_far": "The alley was slick with blood. Mira stepped over the body, unfazed by the violence.",
+            "topic": "story",
+            "constraints": {"pov": "third", "tense": "past"}
+          },
+          "output": {
+            "branches": [
+              {
+                "title": "Aftermath",
+                "content": "Mira examined the scene, noting the brutality of the attack. She made mental notes of the blood patterns and the victim's wounds.",
+                "style": "conservative",
+                "events": [
+                  {"summary": "Mira investigates violent crime scene", "participants": ["Mira"]}
+                ],
+                "confidence": 0.8
+              }
+            ],
+            "flags": {"violence": ["graphic crime scene"], "unverified_facts": [], "contradictions": [], "new_characters": []},
+            "call_metadata": {"timestamp": "2025-09-13T00:00:00Z", "agent_type": "planner", "processing_time_ms": 210}
+          }
         }
       ]
     },
     
     "graph_manager": {
-      "system_role": "You are a Graph Manager Agent. Build and maintain knowledge graphs of entities, events, and relationships.",
-      "temperature": 0.0,
+  "system_role": "You are a Graph Manager Agent. Build and maintain knowledge graphs of entities, events, and relationships.",
+  "temperature": 0.0,
+  "output_instructions": "Maintain compact, memory-efficient graph. Merge nodes with similarity > threshold. Prune low-importance nodes when limit exceeded. Support backtracking to specified depth. Archive rather than delete for recovery. DO NOT include any extra fields or commentary. If previous response failed JSON validation, strictly produce valid JSON only (no commentary).",
       "output_schema": {
         "type": "object",
         "required": ["nodes", "edges", "graph_stats", "call_metadata"],
@@ -498,8 +568,9 @@
     },
     
     "verifier": {
-      "system_role": "You are a Verifier Agent for consistency and error checking. Validate grammar, POV, character consistency, and factual accuracy.",
-      "temperature": 0.0,
+  "system_role": "You are a Verifier Agent for consistency and error checking. Validate grammar, POV, character consistency, and factual accuracy.",
+  "temperature": 0.0,
+  "output_instructions": "Check grammar using rules and LLM evaluation. Verify POV and tense consistency with established content. Validate character actions against established traits. Cross-reference facts against knowledge base. Flag potential bias or problematic content. Provide specific correction suggestions. DO NOT include any extra fields or commentary. If previous response failed JSON validation, strictly produce valid JSON only (no commentary).",
       "output_schema": {
         "type": "object",
         "required": ["validation_results", "call_metadata"],
@@ -625,8 +696,9 @@
     },
     
     "evaluator": {
-      "system_role": "You are an Evaluator Agent. Score and rank content branches on coherence, quality, and acceptability.",
-      "temperature": 0.0,
+  "system_role": "You are an Evaluator Agent. Score and rank content branches on coherence, quality, and acceptability.",
+  "temperature": 0.0,
+  "output_instructions": "Score each branch on all criteria (0-10 scale). Calculate weighted overall score using provided weights. Rank branches by overall score. Provide specific strengths and weaknesses. Make accept/revise/reject recommendations. DO NOT include any extra fields or commentary. If previous response failed JSON validation, strictly produce valid JSON only (no commentary).",
       "output_schema": {
         "type": "object",
         "required": ["branch_scores", "ranking", "call_metadata"],

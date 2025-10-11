@@ -1396,7 +1396,10 @@ class SessionManager:
                     valid_projections[key] = valid_proj.dict()
                 except Exception as e:
                     logger.warning(f"Projection {key} is invalid and will not be saved: {e}")
-            # Update the session's active workspace if available
+            # Only save to DB if there are valid projections
+            if not valid_projections:
+                logger.warning(f"No valid projections to save for session {session_id}. Skipping DB save, but JSON fallback will be written.")
+                return False
             if session_id in self.active_sessions:
                 active_workspace = self.active_sessions[session_id]["workspace"]
                 if active_workspace:
