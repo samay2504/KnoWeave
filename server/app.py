@@ -264,6 +264,38 @@ def create_app() -> "FastAPI":
         allow_headers=["*"],
     )
 
+    # Add global exception handler for production safety
+    @app.exception_handler(Exception)
+    async def global_exception_handler(request: Request, exc: Exception):
+        """Catch all exceptions and return structured JSON instead of 500 stack traces"""
+        import traceback
+        logger.error(f"Unhandled exception: {exc}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        
+        # Log to file for diagnostics
+        try:
+            import os
+            from pathlib import Path
+            logs_dir = Path("logs")
+            logs_dir.mkdir(exist_ok=True)
+            with open(logs_dir / "errors.log", "a", encoding="utf-8") as f:
+                from datetime import datetime
+                f.write(f"\n[{datetime.utcnow().isoformat()}] {request.method} {request.url}\n")
+                f.write(f"Error: {exc}\n")
+                f.write(traceback.format_exc())
+                f.write("\n---\n")
+        except Exception as log_err:
+            logger.warning(f"Failed to write error log: {log_err}")
+        
+        return JSONResponse(
+            status_code=500,
+            content={
+                "error": "Internal server error",
+                "detail": str(exc) if server_config.environment.lower() in ('development', 'dev') else "An unexpected error occurred",
+                "timestamp": datetime.utcnow().isoformat()
+            }
+        )
+
     # Add global /api/mode endpoint (simple approach)
     @app.post("/api/mode")
     async def global_mode_update(request: Request):
