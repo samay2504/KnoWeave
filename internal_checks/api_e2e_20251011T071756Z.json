@@ -1,0 +1,53 @@
+{
+  "timestamp": "20251011T071756Z",
+  "test_type": "api_endpoint_validation",
+  "server_health": {
+    "endpoint": "GET /health",
+    "status": 200,
+    "response": {
+      "status": "healthy",
+      "timestamp": "2025-10-11T13:01:29.720461"
+    },
+    "result": "PASS"
+  },
+  "auth_endpoints": {
+    "oauth_login": {
+      "endpoint": "GET /auth/google/login",
+      "status": 200,
+      "response_includes": [
+        "auth_url (Google OAuth URL)",
+        "state (CSRF token)"
+      ],
+      "auth_url_valid": true,
+      "includes_required_params": [
+        "client_id",
+        "redirect_uri",
+        "response_type=code",
+        "scope=openid+email+profile",
+        "state",
+        "access_type=offline",
+        "prompt=select_account"
+      ],
+      "result": "PASS"
+    },
+    "current_user_no_auth": {
+      "endpoint": "GET /api/me",
+      "status": 401,
+      "response": {
+        "detail": "Not authenticated"
+      },
+      "correctly_rejects": true,
+      "result": "PASS"
+    }
+  },
+  "session_endpoints": {
+    "note": "Session endpoints require authentication - will test after OAuth flow"
+  },
+  "summary": {
+    "total_tests": 3,
+    "passed": 3,
+    "failed": 0,
+    "server_running": true,
+    "auth_flow_ready": true
+  }
+}

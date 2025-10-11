@@ -1,0 +1,37 @@
+{
+  "timestamp": "20251011T071756Z",
+  "verification_type": "database_connectivity",
+  "mongodb": {
+    "container": "mongodb",
+    "port": 27017,
+    "credentials": {
+      "username": "samay2504",
+      "password": "250403",
+      "auth_database": "admin"
+    },
+    "connection_test": "SUCCESS",
+    "databases_found": ["admin", "config", "local"],
+    "human_ai_co_create_db": {
+      "exists": true,
+      "empty": true,
+      "note": "Database created but no collections yet - will be populated on first auth"
+    },
+    "init_script_execution": "Partial - database exists but no collections"
+  },
+  "arangodb": {
+    "container": "arangodb",
+    "port": 8529,
+    "credentials": {
+      "username": "root",
+      "password": "samay2504"
+    },
+    "connection_test": "NEEDS_MANUAL_VERIFICATION",
+    "web_ui": "http://localhost:8529",
+    "note": "Should verify via web UI or HTTP API"
+  },
+  "server_config_match": {
+    "mongo_uri_expected": "mongodb://localhost:27017",
+    "mongo_actual_auth": "mongodb://samay2504:250403@localhost:27017",
+    "discrepancy": "Server config may need updating for authenticated connection"
+  }
+}

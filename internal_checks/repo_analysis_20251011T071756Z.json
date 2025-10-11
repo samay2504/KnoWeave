@@ -1,0 +1,223 @@
+{
+  "timestamp": "20251011T071756Z",
+  "analysis_type": "full_repository_auth_flow",
+  "backend_files": {
+    "auth_flow_files": [
+      {
+        "file": "server/routes/auth_routes.py",
+        "role": "OAuth endpoints and token management",
+        "key_functions": [
+          "google_login (line 76): Initiates OAuth, generates state, returns auth_url",
+          "google_callback (line 132): Exchanges code for tokens, saves user, sets cookie, returns user data",
+          "refresh_token (line 238): Refreshes JWT using stored refresh token",
+          "get_current_user (line 282): Returns current user from cookie"
+        ],
+        "auth_token_handling": "Sets httpOnly cookie via set_auth_cookie",
+        "sends_receives_oauth": true,
+        "cookie_storage": "auth_token cookie set at line 231"
+      },
+      {
+        "file": "server/auth/google_oauth.py",
+        "role": "Google OAuth client and JWT management",
+        "key_functions": [
+          "set_auth_cookie (line 194): Sets httpOnly cookie with environment-aware secure flag",
+          "clear_auth_cookie (line 213): Deletes auth cookie",
+          "get_current_user_from_request (line 227): Extracts user from cookie JWT",
+          "GoogleOAuth.exchange_code_for_tokens (line 68): Exchanges code with Google",
+          "GoogleOAuth.get_user_info (line 117): Fetches user profile from Google"
+        ],
+        "auth_token_handling": "Creates JWT tokens, sets/reads cookies",
+        "cookie_flags_fixed": true,
+        "environment_aware": true
+      },
+      {
+        "file": "server/app.py",
+        "role": "Main FastAPI app with CORS configuration",
+        "cors_settings": {
+          "line": 259,
+          "allow_origins": ["http://localhost:3000", "http://127.0.0.1:3000"],
+          "allow_credentials": true,
+          "allow_methods": ["*"],
+          "allow_headers": ["*"]
+        },
+        "session_check": "Uses get_current_user_from_request in dependencies"
+      },
+      {
+        "file": "server/dependencies.py",
+        "role": "Dependency injection container",
+        "provides": "MongoDB client, ArangoDB client, LLM provider access"
+      },
+      {
+        "file": "server/server_config.py",
+        "role": "Server configuration with environment variables",
+        "auth_config": {
+          "cookie_secure": "True (default), overridden by environment in google_oauth.py",
+          "cookie_samesite": "Lax",
+          "jwt_expire_seconds": 3600,
+          "environment": "development (default)"
+        }
+      },
+      {
+        "file": "server/routes/session_routes.py",
+        "role": "Session management endpoints",
+        "dependencies": "Uses get_current_user_dependency for auth"
+      }
+    ],
+    "database_files": [
+      {
+        "file": "server/db/mongo_client.py",
+        "role": "MongoDB operations including user storage",
+        "user_operations": "save_user, find_user methods"
+      },
+      {
+        "file": "server/db/arango_client.py",
+        "role": "ArangoDB graph operations",
+        "user_operations": "Graph storage for sessions"
+      },
+      {
+        "file": "scripts/mongo-init.js",
+        "role": "MongoDB initialization script",
+        "creates": "human_ai_co_create database"
+      }
+    ]
+  },
+  "frontend_files": {
+    "auth_flow_files": [
+      {
+        "file": "web/src/components/AuthGoogle.jsx",
+        "role": "Login button and OAuth initiation",
+        "line_55_61": "Calls /api/auth/google with credentials:'include'",
+        "credentials_include": true,
+        "retry_logic": true,
+        "max_retries": 3
+      },
+      {
+        "file": "web/src/components/Callback.jsx",
+        "role": "OAuth callback handler",
+        "line_71": "Calls /auth/google/callback with credentials:'include'",
+        "line_89_122": "NEW: waitForSession retry logic (5 attempts x 200ms)",
+        "credentials_include": true,
+        "session_verification": "Retries /api/me until session cookie available",
+        "fixes_applied": [
+          "Added waitForSession function with retry mechanism",
+          "Prevents race condition by waiting for cookie to be stored"
+        ]
+      },
+      {
+        "file": "web/src/utils/auth.js",
+        "role": "Auth utilities with retry logic",
+        "authFetch": "Wrapper with timeout and retry (line 15)",
+        "parseAuthError": "User-friendly error messages (line 54)"
+      },
+      {
+        "file": "web/src/config/auth.js",
+        "role": "Auth configuration constants",
+        "provides": "MAX_RETRIES, OAUTH_TIMEOUT, error messages"
+      },
+      {
+        "file": "web/src/App.jsx",
+        "role": "Main app with dashboard and session management",
+        "line_133": "FIXED: suggestion_signal now uses credentials:'include'",
+        "line_523": "Uses credentials:'include' for /api/me",
+        "credentials_include": true,
+        "all_api_calls_fixed": true
+      },
+      {
+        "file": "web/src/hooks/useAIMode.js",
+        "role": "Custom hook for AI mode and session management",
+        "all_fetch_calls": "FIXED: All now use credentials:'include'",
+        "lines_fixed": [32, 88, 154, 210, 127, 256, 288],
+        "credentials_include": true
+      }
+    ],
+    "storage_mechanism": {
+      "localStorage": "Not used for auth tokens",
+      "sessionStorage": "Not used for auth tokens",
+      "cookies": "httpOnly auth_token cookie (backend-managed)"
+    }
+  },
+  "auth_flow_sequence": {
+    "1_login_initiation": {
+      "user_action": "Click 'Continue with Google' in AuthGoogle.jsx",
+      "frontend": "GET /api/auth/google with credentials:'include'",
+      "backend": "auth_routes.py:76 generates OAuth URL and state",
+      "response": "Returns {auth_url, state}",
+      "redirect": "Frontend redirects to Google OAuth"
+    },
+    "2_google_oauth": {
+      "user_action": "User authenticates with Google",
+      "google": "Redirects to callback URL with code and state"
+    },
+    "3_callback_processing": {
+      "frontend": "Callback.jsx receives code and state",
+      "call": "GET /auth/google/callback?code=X&state=Y with credentials:'include'",
+      "backend_steps": [
+        "Validate state (auth_routes.py:165)",
+        "Exchange code for tokens (auth_routes.py:184)",
+        "Get user info from Google (auth_routes.py:203)",
+        "Save user to MongoDB (auth_routes.py:208-220)",
+        "Create JWT token (auth_routes.py:223)",
+        "Set httpOnly cookie with environment-aware flags (auth_routes.py:231)",
+        "Return user data (auth_routes.py:232-241)"
+      ],
+      "cookie_set": "auth_token httpOnly cookie with secure=False (dev mode)",
+      "response": "{success: true, user: {...}}"
+    },
+    "4_session_verification_NEW": {
+      "frontend": "Callback.jsx waitForSession function (line 89-122)",
+      "retry_mechanism": "5 attempts with 200ms delay",
+      "call": "GET /api/me with credentials:'include'",
+      "backend": "auth_routes.py:282 verifies cookie and returns user",
+      "purpose": "Ensures cookie is stored by browser before proceeding",
+      "fixes_race_condition": true
+    },
+    "5_redirect_to_dashboard": {
+      "frontend": "Navigate to / after successful session verification",
+      "dashboard": "App.jsx loads with authenticated user"
+    }
+  },
+  "fixes_applied": {
+    "critical_fix_1": {
+      "issue": "Cookie secure flag on localhost",
+      "file": "server/auth/google_oauth.py",
+      "fix": "Environment-aware cookie flags (secure=False for dev, Lax SameSite)",
+      "lines": "194-211, 213-225",
+      "prevents": "Browser dropping cookies on http://localhost"
+    },
+    "high_fix_2": {
+      "issue": "Race condition in callback",
+      "file": "web/src/components/Callback.jsx",
+      "fix": "Added waitForSession retry logic (5x200ms)",
+      "lines": "89-122",
+      "prevents": "Session check before cookie stored"
+    },
+    "medium_fix_3": {
+      "issue": "Missing credentials in API calls",
+      "files": [
+        "web/src/App.jsx (line 133)",
+        "web/src/hooks/useAIMode.js (lines 32, 88, 154, 210, 127, 256, 288)"
+      ],
+      "fix": "Added credentials:'include' to all authenticated endpoints",
+      "prevents": "Cookies not sent with requests"
+    }
+  },
+  "potential_issues_remaining": {
+    "1_refresh_token_flow": {
+      "status": "Endpoint exists but frontend doesn't use it",
+      "backend": "/auth/google/token_refresh exists (auth_routes.py:238)",
+      "frontend": "No automatic refresh on 401",
+      "recommendation": "Implement silent refresh in App.jsx or auth.js"
+    },
+    "2_cookie_domain": {
+      "status": "Currently null (localhost default)",
+      "setting": "server_config.py COOKIE_DOMAIN = None",
+      "recommendation": "Keep as-is for localhost, set for production domain"
+    }
+  },
+  "db_verification_needed": [
+    "Verify mongo-init.js executed and database created",
+    "Test user save operation after OAuth",
+    "Test session storage in MongoDB",
+    "Test graph operations in ArangoDB"
+  ]
+}

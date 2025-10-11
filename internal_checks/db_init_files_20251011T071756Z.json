@@ -1,0 +1,28 @@
+{
+  "timestamp": "20251011T071756Z",
+  "db_init_verification": {
+    "mongodb": {
+      "container_name": "mongodb",
+      "status": "Up 31 minutes",
+      "port": "27017",
+      "init_script": "scripts/mongo-init.js",
+      "init_script_exists": true,
+      "docker_volume_mount": "Needs verification in docker-compose.databases.yml"
+    },
+    "arangodb": {
+      "container_name": "arangodb",
+      "status": "Up 31 minutes", 
+      "port": "8529",
+      "init_script": "Not found - arango-init.js does not exist",
+      "init_script_exists": false,
+      "note": "ArangoDB may need manual database creation"
+    }
+  },
+  "init_files_found": [
+    "scripts/mongo-init.js",
+    "docker/mongo-init.js"
+  ],
+  "init_files_missing": [
+    "arango-init.js (searched in scripts/, docker/, root)"
+  ]
+}
