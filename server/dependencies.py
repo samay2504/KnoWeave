@@ -1,14 +1,6 @@
 """
 Human-AI Co-Creation Platform - Dependency Container System
-Copyright (c) 2025 Samay Mehar. All rights        if CORE_SYSTEM_AVAILABLE:
-            components['LLMProvider'] = import_manager.get_attribute('server.llm_provider', 'AsyncLLMProvider')
-        else:
-            try:
-                from server.llm_provider import AsyncLLMProvider as LLMProvider
-                components['LLMProvider'] = LLMProvider
-            except ImportError:
-                logger.warning("LLM provider components not available")
-                components['LLMProvider'] = None.
+Copyright (c) 2025 Samay Mehar. All rights reserved.
 Patent Pending - Samay Mehar
 
 Production-grade dependency injection system with dual database support.
@@ -17,6 +9,7 @@ Features automatic fallback mechanisms and secure configuration management.
 
 import asyncio
 import logging
+import time
 from typing import Dict, Any, Optional, Union, TYPE_CHECKING
 from contextlib import asynccontextmanager
 
@@ -36,6 +29,14 @@ if TYPE_CHECKING:
     from server.db.arango_client import ArangoGraphClient
 
 logger = logging.getLogger(__name__)
+
+# Global service status tracking
+service_status = {
+    'mongo': {'status': 'unknown', 'message': '', 'last_checked': None},
+    'arango': {'status': 'unknown', 'message': '', 'last_checked': None},
+    'llm': {'status': 'unknown', 'message': '', 'last_checked': None},
+    'json_fallback': {'status': 'ok', 'message': 'available', 'last_checked': time.time()}
+}
 
 class ProductionDependencyContainer:
     """Production-ready dependency injection container with dynamic imports"""
@@ -163,45 +164,91 @@ class ProductionDependencyContainer:
         return db_mode in ['arangodb', 'both'] and self._arango_components['create_arango_client'] is not None
     
     async def _init_mongodb(self):
-        """Initialize MongoDB client"""
-        try:
-            create_mongo_client = self._mongo_components['create_mongo_client']
-            if create_mongo_client:
-                client_config = {
-                    'uri': getattr(self.config, 'mongo_uri', 'mongodb://localhost:27017'),
-                    'database': 'human_ai_co_create'
-                }
-                self._mongo_client = await create_mongo_client(client_config)
-                logger.info("MongoDB client initialized successfully")
-        except Exception as e:
-            logger.error(f"Failed to initialize MongoDB: {e}")
+        """Initialize MongoDB client with retry"""
+        attempts = 3
+        backoff = 1.0
+        
+        for i in range(attempts):
+            try:
+                create_mongo_client = self._mongo_components['create_mongo_client']
+                if create_mongo_client:
+                    client_config = {
+                        'uri': getattr(self.config, 'mongo_uri', 'mongodb://localhost:27017'),
+                        'database': 'human_ai_co_create'
+                    }
+                    self._mongo_client = await create_mongo_client(client_config)
+                    
+                    # Test connection with timeout
+                    if self._mongo_client and hasattr(self._mongo_client, 'test_connection'):
+                        await asyncio.wait_for(self._mongo_client.test_connection(), timeout=5.0)
+                    
+                    logger.info("MongoDB client initialized successfully")
+                    service_status['mongo'] = {
+                        'status': 'ok',
+                        'message': 'connected',
+                        'last_checked': time.time()
+                    }
+                    return
+                    
+            except Exception as e:
+                logger.warning(f"MongoDB init attempt {i+1}/{attempts} failed: {e}")
+                if i < attempts - 1:
+                    await asyncio.sleep(backoff * (2 ** i))
+        
+        logger.error(f"MongoDB initialization failed after {attempts} attempts")
+        service_status['mongo'] = {
+            'status': 'unavailable',
+            'message': 'connection failed',
+            'last_checked': time.time()
+        }
     
     async def _init_arangodb(self):
-        """Initialize ArangoDB client"""
-        try:
-            create_arango_client = self._arango_components['create_arango_client']
-            if create_arango_client:
-                arango_config = {
-                    'url': getattr(self.config, 'arango_url', 'http://localhost:8529'),
-                    'user': getattr(self.config, 'arango_user', 'root'),
-                    'password': getattr(self.config, 'arango_password', ''),
-                    'database': getattr(self.config, 'arango_database', 'human_ai_co_create')
-                }
-                
-                logger.info("🔗 Attempting to initialize ArangoDB client...")
-                self._arango_client = await create_arango_client(arango_config)
-                
-                if self._arango_client and hasattr(self._arango_client, 'connected') and self._arango_client.connected:
-                    logger.info("✅ ArangoDB client initialized successfully")
-                else:
-                    logger.warning("⚠️ ArangoDB client created but not connected - continuing with MongoDB fallback")
+        """Initialize ArangoDB client with retry"""
+        attempts = 3
+        backoff = 1.0
+        
+        for i in range(attempts):
+            try:
+                create_arango_client = self._arango_components['create_arango_client']
+                if create_arango_client:
+                    arango_config = {
+                        'url': getattr(self.config, 'arango_url', 'http://localhost:8529'),
+                        'user': getattr(self.config, 'arango_user', 'root'),
+                        'password': getattr(self.config, 'arango_password', ''),
+                        'database': getattr(self.config, 'arango_database', 'human_ai_co_create')
+                    }
                     
-        except Exception as e:
-            logger.warning(f"❌ ArangoDB client could not be initialized: {e}")
-            logger.info("🔄 System will continue with MongoDB-only mode")
+                    logger.info(f"🔗 Attempting to initialize ArangoDB client (attempt {i+1}/{attempts})...")
+                    self._arango_client = await asyncio.wait_for(
+                        create_arango_client(arango_config),
+                        timeout=5.0
+                    )
+                    
+                    if self._arango_client and hasattr(self._arango_client, 'connected') and self._arango_client.connected:
+                        logger.info("✅ ArangoDB client initialized successfully")
+                        service_status['arango'] = {
+                            'status': 'ok',
+                            'message': 'connected',
+                            'last_checked': time.time()
+                        }
+                        return
+                    else:
+                        raise Exception("Client created but not connected")
+                        
+            except Exception as e:
+                logger.warning(f"❌ ArangoDB init attempt {i+1}/{attempts} failed: {e}")
+                if i < attempts - 1:
+                    await asyncio.sleep(backoff * (2 ** i))
+        
+        logger.warning("⚠️ ArangoDB client could not be initialized - continuing with MongoDB fallback")
+        service_status['arango'] = {
+            'status': 'unavailable',
+            'message': 'connection failed',
+            'last_checked': time.time()
+        }
     
     async def _init_llm_provider(self):
-        """Initialize LLM provider"""
+        """Initialize LLM provider with fallback"""
         try:
             AsyncLLMProvider = self._llm_components.get('AsyncLLMProvider')
             if AsyncLLMProvider:
@@ -212,13 +259,23 @@ class ProductionDependencyContainer:
                     'temperature': 0.7,
                     'max_tokens': 1000
                 }
-                # Initialize with configuration
+                # Initialize with configuration and timeout
                 self._llm_provider = AsyncLLMProvider(llm_config)
-                await self._llm_provider.initialize()
+                await asyncio.wait_for(self._llm_provider.initialize(), timeout=10.0)
                 logger.info("LLM provider initialized successfully")
+                service_status['llm'] = {
+                    'status': 'ok',
+                    'message': 'provider ready',
+                    'last_checked': time.time()
+                }
         except Exception as e:
             logger.warning(f"Failed to initialize LLM provider: {e}")
             logger.info("System will continue without LLM capabilities")
+            service_status['llm'] = {
+                'status': 'degraded',
+                'message': f'initialization failed: {str(e)[:100]}',
+                'last_checked': time.time()
+            }
     
     async def cleanup(self):
         """Cleanup all dependencies"""
