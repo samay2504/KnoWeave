@@ -350,6 +350,20 @@ class ServerConfig(BaseSettings):
         """Get cookie secure flag"""
         return self.cookie_secure
 
+    def cookie_flags(self) -> Dict[str, Any]:
+        """Get environment-aware cookie flags for auth cookies"""
+        is_dev = self.environment.lower() in ('development', 'dev', 'local')
+        frontend_url = self.frontend_url or 'http://localhost:3000'
+        secure = not is_dev and frontend_url.startswith('https')
+        same_site = "None" if secure else "Lax"
+        
+        return {
+            'httponly': True,
+            'secure': secure,
+            'samesite': same_site,
+            'path': '/'
+        }
+
     def get_llm_config(self) -> Dict[str, Any]:
         """Get LLM configuration for provider initialization"""
         return {

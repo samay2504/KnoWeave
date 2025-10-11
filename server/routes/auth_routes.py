@@ -18,6 +18,21 @@ from auth.google_oauth import (
     get_current_user_from_request,
 )
 
+# Import server config for cookie flags
+try:
+    from server_config import ServerConfig
+    server_config = ServerConfig()
+except ImportError:
+    try:
+        from .server_config import ServerConfig
+        server_config = ServerConfig()
+    except ImportError:
+        # Fallback config
+        class MockConfig:
+            def cookie_flags(self):
+                return {'httponly': True, 'secure': False, 'samesite': 'lax', 'path': '/'}
+        server_config = MockConfig()
+
 # Use delayed import to avoid circular dependency
 def get_mongo_client():
     """Get mongo client with delayed import to avoid circular dependency"""
@@ -98,14 +113,13 @@ async def google_login(request: Request, response: Response):
 
         auth_url = google_oauth.generate_auth_url(state)
 
-        # Store state in secure cookie as well
+        # Store state in secure cookie with environment-aware flags
+        cookie_flags = server_config.cookie_flags()
         response.set_cookie(
             "oauth_state",
             state,
             max_age=300,  # 5 minutes to match server-side expiration
-            httponly=True,
-            secure=False,  # Set to True in production with HTTPS
-            samesite="lax",
+            **cookie_flags
         )
 
         logger.info(f"OAuth login initiated from IP: {get_remote_address(request)}")
@@ -207,7 +221,9 @@ async def google_callback(
 
         # Save user using MongoClient
         if mongo_client and hasattr(mongo_client, 'save_user'):
+            # Wait for save to complete before setting cookie
             await mongo_client.save_user(user_doc)
+            logger.info(f"User {user_doc.get('email', 'unknown')} saved to database")
         else:
             # Mock for tests - just log the action
             logger.info(f"Mock save user: {user_doc.get('email', 'unknown')}")
@@ -217,7 +233,7 @@ async def google_callback(
             {"id": user_info.id, "email": user_info.email, "name": user_info.name}
         )
 
-        # Set secure cookie
+        # Set secure cookie with environment-aware flags
         set_auth_cookie(response, jwt_token)
 
         logger.info(f"User {user_info.email} logged in successfully")
