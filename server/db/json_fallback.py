@@ -5,13 +5,22 @@ JSON Fallback Storage for local backup and offline operation
 import json
 import logging
 import asyncio
-import aiofiles
+import os
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, List, Optional, Union
 from dataclasses import dataclass, asdict
 
 logger = logging.getLogger(__name__)
+
+# Optional aiofiles import with fallback
+try:
+    import aiofiles
+    AIOFILES_AVAILABLE = True
+except ImportError:
+    aiofiles = None
+    AIOFILES_AVAILABLE = False
+    logger.warning("aiofiles not available; falling back to sync file IO in threadpool")
 
 
 @dataclass
@@ -49,6 +58,39 @@ class JSONFallbackClient:
         timestamp_str = timestamp.strftime("%Y%m%d_%H%M%S_%f")
         return self.snapshots_dir / session_id / f"snapshot_{timestamp_str}.json"
 
+    def _sync_write_json(self, file_path: Path, data: str) -> None:
+        """Synchronous JSON write helper for fallback"""
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(data)
+
+    def _sync_read_json(self, file_path: Path) -> str:
+        """Synchronous JSON read helper for fallback"""
+        with open(file_path, 'r', encoding='utf-8') as f:
+            return f.read()
+
+    async def _async_write_json(self, file_path: Path, data: Dict[str, Any]) -> None:
+        """Async JSON write with aiofiles fallback"""
+        json_str = json.dumps(data, indent=2, ensure_ascii=False, default=str)
+        
+        if AIOFILES_AVAILABLE:
+            async with aiofiles.open(file_path, "w", encoding="utf-8") as f:
+                await f.write(json_str)
+        else:
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(None, self._sync_write_json, file_path, json_str)
+
+    async def _async_read_json(self, file_path: Path) -> Dict[str, Any]:
+        """Async JSON read with aiofiles fallback"""
+        if AIOFILES_AVAILABLE:
+            async with aiofiles.open(file_path, "r", encoding="utf-8") as f:
+                content = await f.read()
+        else:
+            loop = asyncio.get_running_loop()
+            content = await loop.run_in_executor(None, self._sync_read_json, file_path)
+        
+        return json.loads(content)
+
     async def save_session(self, session_id: str, data: Dict[str, Any]) -> bool:
         """Save session data to JSON file"""
         try:
@@ -62,13 +104,8 @@ class JSONFallbackClient:
                 "format_version": "1.0",
             }
 
-            # Write file asynchronously
-            async with aiofiles.open(session_file, "w", encoding="utf-8") as f:
-                await f.write(
-                    json.dumps(
-                        data_with_meta, indent=2, ensure_ascii=False, default=str
-                    )
-                )
+            # Write file using fallback-safe method
+            await self._async_write_json(session_file, data_with_meta)
 
             logger.debug(f"Saved session {session_id} to {session_file}")
             return True
@@ -85,9 +122,7 @@ class JSONFallbackClient:
             if not session_file.exists():
                 return None
 
-            async with aiofiles.open(session_file, "r", encoding="utf-8") as f:
-                content = await f.read()
-                data = json.loads(content)
+            data = await self._async_read_json(session_file)
 
             logger.debug(f"Loaded session {session_id} from {session_file}")
             return data
@@ -138,11 +173,8 @@ class JSONFallbackClient:
                 "format_version": "1.0",
             }
 
-            # Write file asynchronously
-            async with aiofiles.open(snapshot_file, "w", encoding="utf-8") as f:
-                await f.write(
-                    json.dumps(snapshot_data, indent=2, ensure_ascii=False, default=str)
-                )
+            # Write file using fallback-safe method
+            await self._async_write_json(snapshot_file, snapshot_data)
 
             logger.debug(f"Saved snapshot for session {session_id} to {snapshot_file}")
             return True
@@ -167,9 +199,7 @@ class JSONFallbackClient:
             # Sort by modification time (latest first)
             latest_file = max(snapshot_files, key=lambda f: f.stat().st_mtime)
 
-            async with aiofiles.open(latest_file, "r", encoding="utf-8") as f:
-                content = await f.read()
-                snapshot_data = json.loads(content)
+            snapshot_data = await self._async_read_json(latest_file)
 
             logger.debug(
                 f"Loaded latest snapshot for session {session_id} from {latest_file}"
@@ -191,9 +221,7 @@ class JSONFallbackClient:
 
             for session_file in self.sessions_dir.glob("*.json"):
                 try:
-                    async with aiofiles.open(session_file, "r", encoding="utf-8") as f:
-                        content = await f.read()
-                        data = json.loads(content)
+                    data = await self._async_read_json(session_file)
 
                     # Extract session info
                     session_info = {
@@ -279,13 +307,11 @@ class JSONFallbackClient:
                     session_dates.append(creation_time)
 
                     # Read topic for topic stats
-                    async with aiofiles.open(session_file, "r", encoding="utf-8") as f:
-                        content = await f.read()
-                        data = json.loads(content)
-                        topic = data.get("topic", "unknown")
-                        stats["sessions_by_topic"][topic] = (
-                            stats["sessions_by_topic"].get(topic, 0) + 1
-                        )
+                    data = await self._async_read_json(session_file)
+                    topic = data.get("topic", "unknown")
+                    stats["sessions_by_topic"][topic] = (
+                        stats["sessions_by_topic"].get(topic, 0) + 1
+                    )
 
                 except Exception as e:
                     logger.warning(
@@ -333,8 +359,7 @@ class JSONFallbackClient:
                         async with aiofiles.open(
                             snapshot_file, "r", encoding="utf-8"
                         ) as f:
-                            content = await f.read()
-                            snapshot_data = json.loads(content)
+                            snapshot_data = await self._async_read_json(snapshot_file)
                             snapshots.append(snapshot_data)
                     except Exception as e:
                         logger.warning(f"Failed to read snapshot {snapshot_file}: {e}")
@@ -355,10 +380,7 @@ class JSONFallbackClient:
             export_file = Path(export_path)
             export_file.parent.mkdir(parents=True, exist_ok=True)
 
-            async with aiofiles.open(export_file, "w", encoding="utf-8") as f:
-                await f.write(
-                    json.dumps(export_data, indent=2, ensure_ascii=False, default=str)
-                )
+            await self._async_write_json(export_file, export_data)
 
             logger.info(f"Exported session {session_id} to {export_file}")
             return True
@@ -376,9 +398,7 @@ class JSONFallbackClient:
                 return None
 
             # Read import file
-            async with aiofiles.open(import_file, "r", encoding="utf-8") as f:
-                content = await f.read()
-                import_data = json.loads(content)
+            import_data = await self._async_read_json(import_file)
 
             session_id = import_data["export_metadata"]["session_id"]
             session_data = import_data["session_data"]
@@ -395,10 +415,7 @@ class JSONFallbackClient:
 
                 snapshot_file.parent.mkdir(parents=True, exist_ok=True)
 
-                async with aiofiles.open(snapshot_file, "w", encoding="utf-8") as f:
-                    await f.write(
-                        json.dumps(snapshot, indent=2, ensure_ascii=False, default=str)
-                    )
+                await self._async_write_json(snapshot_file, snapshot)
 
             logger.info(f"Imported session {session_id} from {import_file}")
             return session_id
