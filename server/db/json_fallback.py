@@ -173,11 +173,8 @@ class JSONFallbackClient:
                 "format_version": "1.0",
             }
 
-            # Write file asynchronously
-            async with aiofiles.open(snapshot_file, "w", encoding="utf-8") as f:
-                await f.write(
-                    json.dumps(snapshot_data, indent=2, ensure_ascii=False, default=str)
-                )
+            # Write file using helper
+            await self._async_write_json(snapshot_file, snapshot_data)
 
             logger.debug(f"Saved snapshot for session {session_id} to {snapshot_file}")
             return True
@@ -202,9 +199,8 @@ class JSONFallbackClient:
             # Sort by modification time (latest first)
             latest_file = max(snapshot_files, key=lambda f: f.stat().st_mtime)
 
-            async with aiofiles.open(latest_file, "r", encoding="utf-8") as f:
-                content = await f.read()
-                snapshot_data = json.loads(content)
+            # Read file using helper
+            snapshot_data = await self._async_read_json(latest_file)
 
             logger.debug(
                 f"Loaded latest snapshot for session {session_id} from {latest_file}"
