@@ -19,29 +19,34 @@ def filter_llm_output(data: dict, schema: Type[BaseModel]) -> dict:
     Raises:
         ValidationError: If required fields are missing or invalid.
     """
-    # Parse and validate using Pydantic (will remove extra fields if extra="forbid")
+    # Parse and validate using Pydantic v2 (will remove extra fields if extra="forbid")
     try:
-        obj = schema.parse_obj(data)
-        return obj.dict()
+        # Use model_validate instead of parse_obj (Pydantic v2)
+        obj = schema.model_validate(data) if hasattr(schema, 'model_validate') else schema.parse_obj(data)
+        return obj.model_dump() if hasattr(obj, 'model_dump') else obj.dict()
     except ValidationError as e:
         # Try to auto-fix: remove extra fields, fill missing with defaults
         cleaned = {}
-        for field in schema.__fields__:
-            if field in data:
-                value = data[field]
+        # Use model_fields (Pydantic v2) or __fields__ (Pydantic v1) for compatibility
+        fields_dict = schema.model_fields if hasattr(schema, 'model_fields') else schema.__fields__
+        
+        for field_name, field_info in fields_dict.items():
+            if field_name in data:
+                value = data[field_name]
                 # If field is enum, coerce to valid value
-                field_type = schema.__fields__[field].type_  # type: ignore
-                if isinstance(field_type, type) and issubclass(field_type, Enum):
+                # Get type from annotation (Pydantic v2) or type_ (Pydantic v1)
+                field_type = field_info.annotation if hasattr(field_info, 'annotation') else getattr(field_info, 'type_', None)
+                if field_type and isinstance(field_type, type) and issubclass(field_type, Enum):
                     try:
                         value = field_type(value)
                     except Exception:
                         value = list(field_type)[0]
-                cleaned[field] = value
+                cleaned[field_name] = value
             else:
                 # Use default if available
-                default = schema.__fields__[field].default
-                if default is not None:
-                    cleaned[field] = default
+                default = field_info.default if hasattr(field_info, 'default') else None
+                if default is not None and default != ...:  # ... is Pydantic's marker for required
+                    cleaned[field_name] = default
         # Validate again
-        obj = schema.parse_obj(cleaned)
-        return obj.dict()
+        obj = schema.model_validate(cleaned) if hasattr(schema, 'model_validate') else schema.parse_obj(cleaned)
+        return obj.model_dump() if hasattr(obj, 'model_dump') else obj.dict()
