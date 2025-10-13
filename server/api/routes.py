@@ -244,6 +244,7 @@ async def create_session(
 
         return {
             "session_id": workspace.session_id,
+            "status": "created",
             "workspace": (
                 workspace.dict() if hasattr(workspace, "dict") else workspace.__dict__
             ),
