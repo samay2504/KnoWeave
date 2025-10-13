@@ -110,13 +110,28 @@ class TestLLMProviderPipeline:
     @pytest.mark.asyncio
     async def test_provider_fallback_chain(self, mock_llm_config, monkeypatch):
         """Test that provider fallback chain works correctly"""
-        # Mock all providers to fail except fallback
-        with patch('server.llm_provider.HTTPX_AVAILABLE', False):
+        # Clear all API keys to force fallback
+        import os
+        original_keys = {}
+        api_keys = ['OPENAI_API_KEY', 'GOOGLE_API_KEY', 'ANTHROPIC_API_KEY', 
+                    'GROQ_API_KEY', 'OPENROUTER_API_KEY', 'HUGGINGFACEHUB_API_TOKEN']
+        
+        for key in api_keys:
+            original_keys[key] = os.environ.get(key)
+            if key in os.environ:
+                monkeypatch.delenv(key, raising=False)
+        
+        try:
             provider = AsyncLLMProvider(mock_llm_config)
             await provider.initialize()
             
-            # Should fall back to FallbackLLM
+            # Should fall back to FallbackLLM when no API keys available
             assert provider.current_provider == "fallback"
+        finally:
+            # Restore original keys
+            for key, value in original_keys.items():
+                if value is not None:
+                    os.environ[key] = value
 
     @pytest.mark.asyncio
     async def test_invoke_with_different_response_formats(self, mock_llm_config):
