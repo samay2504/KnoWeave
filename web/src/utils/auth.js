@@ -20,6 +20,7 @@ export const authFetch = async (url, options = {}, retries = AUTH_CONFIG.MAX_RET
     const response = await fetch(url, {
       ...options,
       signal: controller.signal,
+      credentials: 'include', // Include cookies for session management
       headers: {
         'Accept': 'application/json',
         'Content-Type': 'application/json',

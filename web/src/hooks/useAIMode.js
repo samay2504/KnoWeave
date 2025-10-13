@@ -31,6 +31,7 @@ export const useAIMode = (initialMode = 'balanced') => {
       // Sync with backend PTG system
       const response = await fetch(`${API_BASE}/session/mode`, {
         method: 'POST',
+        credentials: 'include', // Include cookies for auth
         headers: {
           'Content-Type': 'application/json',
         },
@@ -85,6 +86,7 @@ export const useAIMode = (initialMode = 'balanced') => {
 
   const response = await fetch(`${API_BASE}/ptg/generate`.replace('/api/ptg', '/api/ptg'), {
         method: 'POST',
+        credentials: 'include', // Include cookies for auth
         headers: {
           'Content-Type': 'application/json',
         },
@@ -111,7 +113,9 @@ export const useAIMode = (initialMode = 'balanced') => {
    */
   const getAvailableModes = async () => {
     try {
-      const response = await fetch(`${API_BASE}/session/modes`);
+      const response = await fetch(`${API_BASE}/session/modes`, {
+        credentials: 'include', // Include cookies for auth
+      });
       
       if (!response.ok) {
         throw new Error(`Failed to fetch modes: ${response.statusText}`);
@@ -150,6 +154,7 @@ export const useAIMode = (initialMode = 'balanced') => {
     try {
       const response = await fetch(`${API_BASE}/agents/perception/detect-domain`, {
         method: 'POST',
+        credentials: 'include', // Include cookies for auth
         headers: {
           'Content-Type': 'application/json',
         },
@@ -204,6 +209,7 @@ export const useSession = () => {
     try {
   const response = await fetch(`${API_BASE}/session/new`, {
         method: 'POST',
+        credentials: 'include', // Include cookies for auth
         headers: {
           'Content-Type': 'application/json',
         },
@@ -237,7 +243,9 @@ export const useSession = () => {
     }
 
     try {
-      const response = await fetch(`${API_BASE}/session/${targetSessionId}`);
+      const response = await fetch(`${API_BASE}/session/${targetSessionId}`, {
+        credentials: 'include', // Include cookies for auth
+      });
       
       if (!response.ok) {
         if (response.status === 404) {
@@ -269,6 +277,7 @@ export const useSession = () => {
     try {
       await fetch(`${API_BASE}/session/${sessionId}/end`, {
         method: 'POST',
+        credentials: 'include', // Include cookies for auth
       });
     } catch (err) {
       console.error('Error ending session:', err);

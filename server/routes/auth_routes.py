@@ -24,7 +24,7 @@ try:
     server_config = ServerConfig()
 except ImportError:
     try:
-        from .server_config import ServerConfig
+        from server_config import ServerConfig
         server_config = ServerConfig()
     except ImportError:
         # Fallback config
