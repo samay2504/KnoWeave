@@ -16,7 +16,7 @@ API Routes - Human-AI Co-Creation System
 REST API endpoints for the server
 """
 
-from fastapi import APIRouter, HTTPException, Depends, Body
+from fastapi import APIRouter, HTTPException, Depends, Body, Request
 from fastapi.responses import JSONResponse
 from typing import Dict, Any, Optional, List
 import uuid
@@ -396,12 +396,26 @@ async def accept_projection(
 @router.post("/{session_id}/workflow", response_model=Dict[str, Any])
 async def run_complete_workflow(
     session_id: str,
-    user_input: str = Body(default="", description="Optional user input"),
+    request: Request,
     orchestrator: AgentOrchestrator = Depends(get_orchestrator),
 ):
-    """Run complete co-creation workflow"""
+    """Run complete co-creation workflow - accepts flexible payload shapes"""
     try:
         logger.info(f"Running complete workflow for session {session_id}")
+        
+        # Parse body flexibly to support both dict and raw string
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        
+        # Normalize user_input from various possible shapes
+        if isinstance(body, dict):
+            user_input = body.get("user_input") or body.get("text") or body.get("content") or ""
+        elif isinstance(body, str):
+            user_input = body
+        else:
+            user_input = ""
 
         result = await orchestrator.run_complete_workflow(session_id, user_input)
 

@@ -53,12 +53,63 @@ router = APIRouter(tags=["auth"])
 logger = logging.getLogger(__name__)
 
 
-# In-memory state storage with expiration 
+# In-memory state storage with expiration (with MongoDB fallback)
 import time
+from datetime import datetime, timedelta
 _oauth_states: Dict[str, Dict] = {}
 
+async def ensure_oauth_state_index(mongo_client):
+    """Ensure TTL index exists on oauth_states collection"""
+    try:
+        if mongo_client and hasattr(mongo_client, 'db'):
+            db = mongo_client.db
+            # Create TTL index if it doesn't exist (expires after 600 seconds)
+            await db.oauth_states.create_index(
+                "created_at", 
+                expireAfterSeconds=600,
+                background=True
+            )
+            logger.debug("OAuth state TTL index ensured")
+    except Exception as e:
+        logger.warning(f"Failed to create oauth_states TTL index: {e}")
+
+async def save_oauth_state_to_db(state: str, state_data: dict, mongo_client):
+    """Save OAuth state to MongoDB for persistence"""
+    try:
+        if mongo_client and hasattr(mongo_client, 'db'):
+            db = mongo_client.db
+            doc = {
+                "state": state,
+                "created_at": datetime.utcnow(),
+                **state_data
+            }
+            await db.oauth_states.insert_one(doc)
+            logger.debug(f"OAuth state saved to MongoDB: {state}")
+    except Exception as e:
+        logger.warning(f"Failed to save oauth state to MongoDB: {e}")
+
+async def consume_state_from_db(state: str, mongo_client) -> Optional[dict]:
+    """Consume OAuth state from MongoDB (find and delete)"""
+    try:
+        if mongo_client and hasattr(mongo_client, 'db'):
+            db = mongo_client.db
+            doc = await db.oauth_states.find_one_and_delete({"state": state})
+            if doc:
+                # Check expiration
+                created_at = doc.get("created_at")
+                if created_at:
+                    age = (datetime.utcnow() - created_at).total_seconds()
+                    if age > 600:  # 10 minutes
+                        logger.warning(f"OAuth state expired (age: {age}s): {state}")
+                        return None
+                logger.debug(f"OAuth state consumed from MongoDB: {state}")
+                return doc
+    except Exception as e:
+        logger.warning(f"Failed to consume oauth state from MongoDB: {e}")
+    return None
+
 def clean_expired_states():
-    """Clean up expired OAuth states."""
+    """Clean up expired OAuth states from memory."""
     current_time = time.time()
     expired_keys = [
         key for key, value in _oauth_states.items()
@@ -68,7 +119,7 @@ def clean_expired_states():
         del _oauth_states[key]
 
 def is_state_valid(state: str) -> bool:
-    """Check if OAuth state is valid and not expired."""
+    """Check if OAuth state is valid and not expired in memory."""
     if state not in _oauth_states:
         return False
     
@@ -77,7 +128,7 @@ def is_state_valid(state: str) -> bool:
 
 
 def consume_state(state: str) -> dict:
-    """Consume a state (remove it after use to prevent reuse) and return its data."""
+    """Consume a state from memory (remove it after use to prevent reuse) and return its data."""
     if state in _oauth_states:
         state_data = _oauth_states[state]
         del _oauth_states[state]  # Remove to prevent reuse
@@ -87,7 +138,7 @@ def consume_state(state: str) -> dict:
 
 @router.get("/auth/google/login")
 @limiter.limit("5/minute")
-async def google_login(request: Request, response: Response):
+async def google_login(request: Request, response: Response, mongo_client=Depends(get_mongo_client)):
     """Initiate Google OAuth login flow."""
     try:
         # Check if user is already authenticated
@@ -103,13 +154,18 @@ async def google_login(request: Request, response: Response):
         
         state = generate_state()
 
-        # Store state with timestamp for validation
+        # Store state with timestamp for validation (both in-memory and MongoDB)
         clean_expired_states()  # Clean up old states first
-        _oauth_states[state] = {
+        state_data = {
             "created_at": time.time(),
             "ip": get_remote_address(request),
             "user_agent": request.headers.get("user-agent", ""),
         }
+        _oauth_states[state] = state_data
+        
+        # Persist to MongoDB for cross-worker/cross-request reliability
+        await save_oauth_state_to_db(state, state_data, mongo_client)
+        await ensure_oauth_state_index(mongo_client)
 
         auth_url = google_oauth.generate_auth_url(state)
 
@@ -136,9 +192,9 @@ async def google_login(request: Request, response: Response):
 # Add redirect endpoint for frontend compatibility
 @router.get("/api/auth/google")
 @limiter.limit("5/minute")
-async def google_login_redirect(request: Request, response: Response):
+async def google_login_redirect(request: Request, response: Response, mongo_client=Depends(get_mongo_client)):
     """Redirect to the main Google OAuth login endpoint."""
-    return await google_login(request, response)
+    return await google_login(request, response, mongo_client)
 
 
 @router.get("/auth/google/callback")
@@ -168,8 +224,13 @@ async def google_callback(
                 detail="Invalid or expired authentication session. Please try logging in again.",
             )
         
-        # Check in-memory state with expiration and consume it
-        state_data = consume_state(state)
+        # Check in MongoDB first (production-grade persistence)
+        state_data = await consume_state_from_db(state, mongo_client)
+        
+        # Fallback to in-memory state if MongoDB unavailable
+        if not state_data:
+            state_data = consume_state(state)
+        
         if not state_data:
             logger.warning(
                 f"OAuth state expired or not found for IP: {get_remote_address(request)}"
@@ -338,9 +399,9 @@ def get_current_user_dependency(request: Request) -> Dict:
 # API-compatible routes for frontend integration
 @router.get("/api/auth/google")
 @limiter.limit("5/minute")
-async def api_google_login(request: Request, response: Response):
+async def api_google_login(request: Request, response: Response, mongo_client=Depends(get_mongo_client)):
     """API endpoint for Google OAuth login (compatible with frontend)."""
-    return await google_login(request, response)
+    return await google_login(request, response, mongo_client)
 
 
 @router.post("/api/auth/callback")
