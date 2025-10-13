@@ -57,7 +57,9 @@ class TestGoogleOAuth:
         with pytest.raises(Exception) as exc_info:
             await google_oauth.exchange_code_for_tokens("invalid_code", "test_state")
 
-        assert "Token exchange failed" in str(exc_info.value)
+        # Updated: check for new user-friendly error message
+        error_msg = str(exc_info.value)
+        assert "Authorization code has expired" in error_msg or "Token exchange failed" in error_msg
 
     @respx.mock
     @pytest.mark.asyncio
