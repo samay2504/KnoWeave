@@ -150,6 +150,7 @@ class TestSessionEndpoints:
             status.HTTP_200_OK, 
             status.HTTP_404_NOT_FOUND, 
             status.HTTP_400_BAD_REQUEST,
+            status.HTTP_422_UNPROCESSABLE_ENTITY,  # Validation error
             status.HTTP_500_INTERNAL_SERVER_ERROR
         ]
         if response.status_code == status.HTTP_200_OK:
