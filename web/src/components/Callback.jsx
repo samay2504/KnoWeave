@@ -88,6 +88,46 @@ const Callback = ({ onAuthSuccess, onAuthFailure }) => {
         }
 
         setUserInfo(data.user);
+        
+        // Poll /api/me to confirm session is established
+        let pollAttempts = 0;
+        const maxPolls = 5;
+        const pollInterval = 200; // Start with 200ms
+        
+        const pollMe = async () => {
+          try {
+            const meResponse = await fetch(`${API_BASE_URL}/api/me`, {
+              credentials: 'include',
+              headers: { 'Content-Type': 'application/json' }
+            });
+            
+            if (meResponse.ok) {
+              const meData = await meResponse.json();
+              console.log('✅ Session confirmed:', meData);
+              return true;
+            }
+            return false;
+          } catch (e) {
+            console.warn(`/api/me poll attempt ${pollAttempts + 1} failed:`, e);
+            return false;
+          }
+        };
+        
+        // Try polling with exponential backoff
+        while (pollAttempts < maxPolls) {
+          const confirmed = await pollMe();
+          if (confirmed) break;
+          
+          pollAttempts++;
+          if (pollAttempts < maxPolls) {
+            await new Promise(resolve => setTimeout(resolve, pollInterval * Math.pow(2, pollAttempts - 1)));
+          }
+        }
+        
+        if (pollAttempts >= maxPolls) {
+          console.warn('Session confirmation polling timed out, but proceeding with login');
+        }
+        
         setProgress(100);
         setStatus('success');
 

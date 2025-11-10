@@ -1052,18 +1052,94 @@ def create_app() -> "FastAPI":
 
             signal_data = await request.json()
             trigger_type = signal_data.get("trigger_type") or signal_data.get("type")  # Support both formats
+            topic_content = signal_data.get("topic_content", "")
+            mode = signal_data.get("mode", "balanced")
             
             # The orchestrator (session_manager) decides whether to run the suggestion pipeline
             should_suggest, reason = await session_manager.handle_suggestion_trigger(session_id, trigger_type, signal_data)
 
             if should_suggest:
-                # This would trigger the suggestion pipeline asynchronously
-                # For this implementation, we'll just log it.
                 logger.info(f"Suggestion triggered for session {session_id} due to {reason}")
-                # In a real implementation, you would call a background task here
-                # to run the full suggestion pipeline (perception -> planner -> etc.)
-                # and then push the results to the client via websockets.
-                return {"status": "suggestion_triggered", "reason": reason}
+                
+                # Actually invoke the suggestion pipeline now instead of just logging
+                try:
+                    # Create a SuggestRequest-like object
+                    suggest_request = SuggestRequest(
+                        mode=mode,
+                        options={
+                            "topic": "user_content",
+                            "context": topic_content[:200] if topic_content else "User content generation",
+                            "max_branches": 3
+                        },
+                        constraints={}
+                    )
+                    
+                    # Call the actual suggestion pipeline
+                    workspace = await session_manager.load_workspace(session_id)
+                    if not workspace:
+                        raise HTTPException(status_code=404, detail="Session not found")
+
+                    # Run simplified suggest pipeline
+                    workspace_data = workspace.model_dump() if hasattr(workspace, 'model_dump') else workspace
+                    
+                    # Run perception
+                    perception_result = {}
+                    if agents.get("perception"):
+                        try:
+                            perception_result = await agents["perception"].invoke(
+                                workspace_data,
+                                {"session_id": session_id, "mode": mode}
+                            )
+                        except Exception as e:
+                            logger.warning(f"Perception agent failed: {e}")
+                    
+                    # Update graph
+                    if agents.get("graph_manager") and perception_result.get("entities"):
+                        try:
+                            await agents["graph_manager"].invoke(
+                                workspace_data,
+                                {
+                                    "session_id": session_id,
+                                    "entities": perception_result.get("entities", []),
+                                    "events": perception_result.get("events", []),
+                                }
+                            )
+                        except Exception as e:
+                            logger.warning(f"Graph manager failed: {e}")
+                    
+                    # Generate projections
+                    projections = []
+                    if agents.get("planner"):
+                        try:
+                            planner_result = await agents["planner"].invoke(
+                                workspace_data,
+                                {
+                                    "session_id": session_id,
+                                    "mode": mode,
+                                    "analysis": perception_result,
+                                    "max_branches": 3
+                                }
+                            )
+                            projections = planner_result.get("projections", [])
+                        except Exception as e:
+                            logger.warning(f"Planner agent failed: {e}")
+                    
+                    return {
+                        "status": "suggestion_completed",
+                        "reason": reason,
+                        "projections": projections,
+                        "analysis": perception_result,
+                        "timestamp": datetime.now().isoformat()
+                    }
+                    
+                except Exception as pipeline_error:
+                    logger.error(f"Suggestion pipeline failed: {pipeline_error}")
+                    return {
+                        "status": "suggestion_triggered",
+                        "reason": reason,
+                        "error": str(pipeline_error),
+                        "note": "Pipeline started but encountered errors"
+                    }
             else:
                 return {"status": "suggestion_skipped", "reason": reason}
 

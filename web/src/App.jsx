@@ -148,10 +148,29 @@ const Dashboard = ({ user }) => {
 
       const result = await response.json();
       
-      if (result.status === 'suggestion_triggered') {
+      if (result.status === 'suggestion_completed' && result.projections) {
+        console.log('✅ Suggestions received:', result.projections.length);
+        // Display projections to user
+        const projectionsText = result.projections
+          .map((p, i) => `${i + 1}. ${p.text || p.content || JSON.stringify(p)}`)
+          .join('\n\n');
+        setGeneratedPrompt(`Suggestions:\n${projectionsText}`);
+        
+        // Fetch updated graph
+        try {
+          const graphResponse = await fetch(`${API_BASE_URL}/api/session/${sessionId}/snapshot`, {
+            method: 'GET',
+            headers: { 'Content-Type': 'application/json' }
+          });
+          if (graphResponse.ok) {
+            const snapshotData = await graphResponse.json();
+            console.log('✅ Graph updated:', snapshotData);
+          }
+        } catch (graphError) {
+          console.warn('Failed to fetch updated graph:', graphError);
+        }
+      } else if (result.status === 'suggestion_triggered') {
         console.log('✅ Suggestion triggered:', result.reason);
-        // TODO: Handle suggestion results when they arrive via WebSocket or polling
-        // For now, we'll show a success message
         setGeneratedPrompt(`Suggestion triggered successfully: ${result.reason}`);
       } else {
         console.log('ℹ️ Suggestion skipped:', result.reason);
