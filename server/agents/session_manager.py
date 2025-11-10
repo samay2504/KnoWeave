@@ -215,6 +215,31 @@ class PromptTemplateGenerator:
         # Format into final prompt string with strict JSON requirements
         formatted_prompt = self._format_canonical_prompt(ptg_payload, input_data)
 
+        # Audit log for PTG generation
+        try:
+            import os
+            from pathlib import Path
+            audit_dir = Path("internal_checks")
+            audit_dir.mkdir(exist_ok=True)
+            
+            audit_file = audit_dir / f"prompt_audit_{datetime.utcnow().strftime('%Y%m%d')}.ndjson"
+            
+            audit_entry = {
+                "timestamp": datetime.utcnow().isoformat(),
+                "session_id": session_id,
+                "agent_name": agent_name,
+                "topic": topic[:100] if topic else None,
+                "topic_family": topic_family,
+                "mode": mode,
+                "few_shot_count": len(ptg_payload.get("few_shot_examples", [])),
+                "prompt_length": len(formatted_prompt)
+            }
+            
+            with open(audit_file, 'a', encoding='utf-8') as f:
+                f.write(json.dumps(audit_entry, ensure_ascii=False) + '\n')
+        except Exception as audit_err:
+            logger.warning(f"Failed to write PTG audit log: {audit_err}")
+
         return {
             "prompt": formatted_prompt,
             "temperature": ptg_payload["temperature"],
