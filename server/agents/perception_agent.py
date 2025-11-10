@@ -767,6 +767,69 @@ class PerceptionAgent:
         else:
             return "mixed"
 
+    async def detect_domain_and_role_llm(self, text: str) -> Dict[str, Any]:
+        """
+        Detect domain and role from text using LLM for more accurate results
+        Falls back to pattern matching if LLM is not available
+        """
+        # Use LLM if available
+        if hasattr(self, 'llm_provider') and self.llm_provider:
+            try:
+                prompt = f"""Analyze this text and return ONLY a valid JSON object with domain classification.
+
+Text: "{text[:500]}"
+
+Return ONLY this JSON structure (no other text):
+{{
+  "topic_family": "<one of: story, education, research, product, marketing, healthcare_nonclinical, legal_plain, engineering, data_science, personal_productivity, accessibility, teaching_training>",
+  "topic_role": "<appropriate role like creative_writer, educator, researcher, etc>",
+  "topic_goal_suggestions": ["goal1", "goal2", "goal3"],
+  "domain_confidence": 0.95,
+  "audience_level": "<one of: general, beginner, intermediate, advanced, child, teenager, adult>",
+  "constraints": [],
+  "warnings": []
+}}
+
+JSON only, no explanation:"""
+
+                response = await self.llm_provider.generate(
+                    prompt=prompt,
+                    max_tokens=300,
+                    temperature=0.1,  # Very low temperature for structured output
+                )
+                
+                # Parse LLM response
+                import json
+                response_text = response.get("text", "").strip()
+                
+                # Remove markdown code blocks if present
+                response_text = re.sub(r'```json\s*', '', response_text)
+                response_text = re.sub(r'```\s*$', '', response_text)
+                response_text = response_text.strip()
+                
+                # Try to extract JSON from response
+                if response_text.startswith("{"):
+                    result = json.loads(response_text)
+                    logger.info(f"✅ LLM domain detection: {result.get('topic_family')} (confidence: {result.get('domain_confidence')})")
+                    return result
+                else:
+                    # Try to find JSON in the response
+                    json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', response_text, re.DOTALL)
+                    if json_match:
+                        result = json.loads(json_match.group(0))
+                        logger.info(f"✅ LLM domain detection (extracted): {result.get('topic_family')}")
+                        return result
+                    
+                logger.warning(f"LLM response was not valid JSON: {response_text[:100]}, falling back to pattern matching")
+                
+            except json.JSONDecodeError as e:
+                logger.warning(f"LLM response JSON parse error: {e}, falling back to pattern matching")
+            except Exception as e:
+                logger.warning(f"LLM domain detection failed: {e}, falling back to pattern matching")
+        
+        # Fallback to pattern matching
+        return self.detect_domain_and_role(text)
+    
     def detect_domain_and_role(self, text: str) -> Dict[str, Any]:
         """
         Detect domain and role from text using pattern matching and heuristics

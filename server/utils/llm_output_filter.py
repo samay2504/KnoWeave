@@ -11,6 +11,8 @@ from enum import Enum
 def filter_llm_output(data: dict, schema: Type[BaseModel]) -> dict:
     """
     Remove extra keys from LLM output and fill missing required fields with defaults.
+    Intelligently handles nested 'content' field structure from LLM responses.
+    
     Args:
         data: The LLM output as a dict.
         schema: The Pydantic model class to validate against.
@@ -19,11 +21,36 @@ def filter_llm_output(data: dict, schema: Type[BaseModel]) -> dict:
     Raises:
         ValidationError: If required fields are missing or invalid.
     """
+    # === Production Fix: Handle nested 'content' structure ===
+    # LLMs often return: {"branch_id": "...", "content": {"title": "...", "paragraph": "..."}}
+    # We need to flatten this to: {"branch_id": "...", "title": "...", "paragraph": "..."}
+    if 'content' in data and isinstance(data['content'], dict):
+        # Merge content fields into top level
+        content_data = data.pop('content')
+        # Copy all fields from content to top level (but don't overwrite existing)
+        for key, value in content_data.items():
+            if key not in data:  # Don't overwrite branch_id, etc.
+                data[key] = value
+    
+    # === Production Fix: Generate paragraph from events if missing ===
+    # If paragraph is empty/missing but we have events, create a narrative summary
+    if (not data.get('paragraph') or data.get('paragraph') == '') and data.get('events'):
+        events = data.get('events', [])
+        if isinstance(events, list) and len(events) > 0:
+            # Create paragraph from event summaries
+            event_summaries = []
+            for evt in events[:3]:  # Use first 3 events
+                if isinstance(evt, dict) and 'summary' in evt:
+                    event_summaries.append(evt['summary'])
+            
+            if event_summaries:
+                data['paragraph'] = ' '.join(event_summaries)
+    
     # Common field aliases (map LLM output to schema fields)
     field_aliases = {
-        'content': 'paragraph',  # Map content -> paragraph for ProjectionSchema
         'text': 'paragraph',
         'description': 'summary',
+        'suggestions': 'paragraph',  # Some LLMs use 'suggestions'
     }
     
     # Apply aliases

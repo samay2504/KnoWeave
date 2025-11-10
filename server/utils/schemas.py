@@ -129,7 +129,7 @@ class ProjectionSchema(BaseSchema):
     events: List[EventSchema] = Field(
         default_factory=list, description="Events in this branch"
     )
-    paragraph: str = Field(..., description="Textual representation of the branch")
+    paragraph: str = Field("", description="Textual representation of the branch")  # Made optional with default
     flags: Dict[str, List[str]] = Field(
         default_factory=dict, description="Flags for unverified facts, etc."
     )
@@ -139,6 +139,9 @@ class ProjectionSchema(BaseSchema):
     score: Optional[float] = Field(
         None, ge=0.0, le=10.0, description="Branch quality score"
     )
+    
+    class Config:
+        extra = "ignore"  # Ignore extra fields like 'meta' from LLM
 
 
 # Session and workspace schemas

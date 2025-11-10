@@ -152,7 +152,7 @@ export const useAIMode = (initialMode = 'balanced') => {
     setError(null);
 
     try {
-      const response = await fetch(`${API_BASE}/agents/perception/detect-domain`, {
+      const response = await fetch(`${API_BASE}/api/agents/perception/detect-domain`, {
         method: 'POST',
         credentials: 'include', // Include cookies for auth
         headers: {

@@ -18,7 +18,8 @@ const GraphView = ({ sessionId }) => {
     setError(null);
         
     try {
-      const response = await fetch(`${apiBase}/api/session/${sessionId}/snapshot`, {
+      // Use the new graph endpoint instead of snapshot
+      const response = await fetch(`${apiBase}/api/session/${sessionId}/graph`, {
         credentials: 'include',
       });
             
@@ -27,7 +28,16 @@ const GraphView = ({ sessionId }) => {
       }
             
       const data = await response.json();
-      setGraphData(data);
+      
+      // Transform data to expected format
+      const transformedData = {
+        nodes: data.nodes || [],
+        edges: data.edges || [],
+        timestamp: data.timestamp
+      };
+      
+      setGraphData(transformedData);
+      console.log('📊 Graph data loaded:', transformedData);
     } catch (err) {
       console.error('Error fetching graph data:', err);
       setError(err.message);
@@ -39,23 +49,6 @@ const GraphView = ({ sessionId }) => {
   useEffect(() => {
     fetchGraphData();
   }, [sessionId, fetchGraphData]);
-
-  const handleNodeAction = async (action, nodeId) => {
-    if (!sessionId || !nodeId) return;
-    
-    try {
-      const response = await fetch(`${apiBase}/api/session/${sessionId}/node/${nodeId}/${action}`, {
-        method: 'POST',
-        credentials: 'include',
-      });
-      
-      if (response.ok) {
-        fetchGraphData(); // Refresh data
-      }
-    } catch (err) {
-      console.error(`Error performing ${action} on node:`, err);
-    }
-  };
 
   // Filter nodes based on search query
   const filteredNodes = graphData?.nodes?.filter(node => 
@@ -265,25 +258,13 @@ const GraphView = ({ sessionId }) => {
           {/* Graph Statistics */}
           <div className="grid grid-cols-2 gap-4 text-sm">
             <div className="p-3 glass rounded-lg border-cyber">
-              <span className="cyber-subheading">Session ID:</span>
-              <p className="text-white truncate font-mono text-xs mt-1">{graphData.session_id || 'N/A'}</p>
+              <span className="cyber-subheading">Nodes:</span>
+              <p className="text-neon-orange-400 font-bold text-lg">{graphData.nodes?.length || 0}</p>
             </div>
             <div className="p-3 glass rounded-lg border-cyber">
-              <span className="cyber-subheading">Topic:</span>
-              <p className="text-white font-semibold">{graphData.topic || 'N/A'}</p>
+              <span className="cyber-subheading">Connections:</span>
+              <p className="text-neon-orange-400 font-bold text-lg">{graphData.edges?.length || 0}</p>
             </div>
-            {graphData.nodes && (
-              <div className="p-3 glass rounded-lg border-cyber">
-                <span className="cyber-subheading">Nodes:</span>
-                <p className="text-neon-orange-400 font-bold text-lg">{graphData.nodes.length}</p>
-              </div>
-            )}
-            {graphData.edges && (
-              <div className="p-3 glass rounded-lg border-cyber">
-                <span className="cyber-subheading">Connections:</span>
-                <p className="text-neon-orange-400 font-bold text-lg">{graphData.edges.length}</p>
-              </div>
-            )}
           </div>
 
           {/* Graph View */}
@@ -318,42 +299,15 @@ const GraphView = ({ sessionId }) => {
               </h4>
               <div className="space-y-3 text-sm">
                 <div><span className="cyber-subheading">ID:</span> <span className="text-white font-mono">{selectedNode.id}</span></div>
+                <div><span className="cyber-subheading">Type:</span> <span className="text-white capitalize">{selectedNode.type}</span></div>
                 <div><span className="cyber-subheading">Title:</span> <span className="text-white">{selectedNode.title}</span></div>
-                <div><span className="cyber-subheading">Text:</span> <span className="text-white">{selectedNode.text}</span></div>
-                <div><span className="cyber-subheading">Score:</span> <span className="text-neon-orange-400 font-bold">{selectedNode.score}</span></div>
-                <div><span className="cyber-subheading">Created:</span> <span className="text-white">{selectedNode.created_at}</span></div>
-                <div><span className="cyber-subheading">Last Used:</span> <span className="text-white">{selectedNode.last_used_at}</span></div>
+                {selectedNode.text && <div><span className="cyber-subheading">Content:</span> <span className="text-white">{selectedNode.text}</span></div>}
+                {selectedNode.actor && <div><span className="cyber-subheading">Actor:</span> <span className="text-white">{selectedNode.actor}</span></div>}
+                {selectedNode.confidence && <div><span className="cyber-subheading">Confidence:</span> <span className="text-neon-orange-400 font-bold">{Math.round(selectedNode.confidence * 100)}%</span></div>}
               </div>
               
               {/* Action Buttons */}
               <div className="flex flex-wrap gap-2 mt-6">
-                <button
-                  onClick={() => handleNodeAction('suggest', selectedNode.id)}
-                  className="cyber-button px-4 py-2 rounded-lg text-sm hover:scale-105 transform transition-all duration-300"
-                >
-                  <svg className="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                  </svg>
-                  Suggest
-                </button>
-                <button
-                  onClick={() => handleNodeAction('accept', selectedNode.id)}
-                  className="cyber-button px-4 py-2 rounded-lg text-sm hover:scale-105 transform transition-all duration-300 bg-green-600/20 hover:bg-green-600/40 border-green-500/30"
-                >
-                  <svg className="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                  Accept
-                </button>
-                <button
-                  onClick={() => handleNodeAction('backtrack', selectedNode.id)}
-                  className="cyber-button px-4 py-2 rounded-lg text-sm hover:scale-105 transform transition-all duration-300 bg-yellow-600/20 hover:bg-yellow-600/40 border-yellow-500/30"
-                >
-                  <svg className="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M3 12l6.414 6.414a2 2 0 001.414.586H19a2 2 0 002-2V7a2 2 0 00-2-2h-8.172a2 2 0 00-1.414.586L3 12z" />
-                  </svg>
-                  Backtrack
-                </button>
                 <button
                   onClick={() => setSelectedNode(null)}
                   className="cyber-button px-4 py-2 rounded-lg text-sm hover:scale-105 transform transition-all duration-300"
@@ -381,20 +335,20 @@ const GraphView = ({ sessionId }) => {
                     onClick={() => setSelectedNode(node)}
                   >
                     <p className="text-sm text-white font-medium mb-2 flex items-center">
-                      <div className="w-2 h-2 bg-neon-orange-500 rounded-full mr-2 animate-pulse"></div>
+                      <div className={`w-2 h-2 ${node.type === 'character' ? 'bg-blue-500' : 'bg-neon-orange-500'} rounded-full mr-2 animate-pulse`}></div>
                       {node.title || node.id}
                     </p>
                     <p className="text-xs text-cyber-gray-300 mb-3 leading-relaxed">{node.text?.substring(0, 100)}...</p>
-                    {node.score && (
+                    {node.confidence && (
                       <div className="mt-3">
                         <div className="w-full bg-cyber-gray-600/30 rounded-full h-2">
                           <div
                             className="bg-gradient-to-r from-neon-orange-500 to-neon-orange-400 h-2 rounded-full transition-all duration-500"
-                            style={{ width: `${node.score * 100}%` }}
+                            style={{ width: `${node.confidence * 100}%` }}
                           ></div>
                         </div>
                         <span className="text-xs cyber-subheading mt-1 block">
-                          Relevance: {Math.round(node.score * 100)}%
+                          Confidence: {Math.round(node.confidence * 100)}%
                         </span>
                       </div>
                     )}
@@ -404,56 +358,36 @@ const GraphView = ({ sessionId }) => {
             </div>
           )}
           
-          {/* Events (Overview) */}
-          {view === 'overview' && graphData.events && graphData.events.length > 0 && (
+          {/* Overview */}
+          {view === 'overview' && filteredNodes.length > 0 && (
             <div>
               <h4 className="cyber-subheading mb-4 flex items-center">
                 <svg className="w-5 h-5 mr-2 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
-                Recent Events
+                Recent Nodes
               </h4>
               <div className="space-y-3">
-                {graphData.events.slice(-5).map((event, index) => (
-                  <div key={index} className="glass rounded-xl p-4 border-cyber">
-                    <p className="text-sm text-white mb-2">{event.summary || event.id}</p>
-                    {event.confidence && (
+                {filteredNodes.slice(-5).map((node) => (
+                  <div key={node.id} className="glass rounded-xl p-4 border-cyber cursor-pointer hover:neon-glow" onClick={() => setSelectedNode(node)}>
+                    <p className="text-sm text-white mb-2 flex items-center">
+                      <span className={`px-2 py-1 rounded text-xs mr-2 ${node.type === 'character' ? 'bg-blue-500/20' : 'bg-orange-500/20'}`}>{node.type}</span>
+                      {node.title || node.id}
+                    </p>
+                    {node.confidence && (
                       <div className="mt-2">
                         <div className="w-full bg-cyber-gray-600/30 rounded-full h-2">
                           <div
                             className="bg-gradient-to-r from-blue-500 to-blue-400 h-2 rounded-full transition-all duration-500"
-                            style={{ width: `${event.confidence * 100}%` }}
+                            style={{ width: `${node.confidence * 100}%` }}
                           ></div>
                         </div>
                         <span className="text-xs cyber-subheading mt-1 block">
-                          Confidence: {Math.round(event.confidence * 100)}%
+                          Confidence: {Math.round(node.confidence * 100)}%
                         </span>
                       </div>
                     )}
                   </div>
-                ))}
-              </div>
-            </div>
-          )}
-          
-          {/* Characters */}
-          {graphData.characters && Object.keys(graphData.characters).length > 0 && (
-            <div>
-              <h4 className="cyber-subheading mb-4 flex items-center">
-                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                </svg>
-                Characters
-              </h4>
-              <div className="flex flex-wrap gap-2">
-                {Object.keys(graphData.characters).map((character) => (
-                  <span
-                    key={character}
-                    className="px-3 py-2 cyber-button rounded-full text-xs cursor-pointer hover:scale-105 transform transition-all duration-300"
-                    title={graphData.characters[character]?.description || character}
-                  >
-                    {character}
-                  </span>
                 ))}
               </div>
             </div>

@@ -69,7 +69,7 @@ class ProductionDependencyContainer:
                     'mongo_uri': 'mongodb://localhost:27017',
                     'arango_url': 'http://localhost:8529',
                     'arango_user': 'root',
-                    'arango_password': '',
+                    'arango_password': 'samay2504',
                     'arango_database': 'human_ai_co_create'
                 })()
     
@@ -214,7 +214,7 @@ class ProductionDependencyContainer:
                     arango_config = {
                         'url': getattr(self.config, 'arango_url', 'http://localhost:8529'),
                         'user': getattr(self.config, 'arango_user', 'root'),
-                        'password': getattr(self.config, 'arango_password', ''),
+                        'password': getattr(self.config, 'arango_password', 'samay2504'),
                         'database': getattr(self.config, 'arango_database', 'human_ai_co_create')
                     }
                     

@@ -488,7 +488,7 @@ def create_app() -> "FastAPI":
 
     @app.post("/api/agents/perception/detect-domain")
     async def perception_detect_domain(request: Request):
-        """Detect domain and role from input text"""
+        """Detect domain and role from input text using LLM when available"""
         try:
             if not agents.get("perception"):
                 raise HTTPException(status_code=500, detail="Perception agent not available")
@@ -499,10 +499,14 @@ def create_app() -> "FastAPI":
             if not text:
                 raise HTTPException(status_code=400, detail="text, content, or input_text required")
             
-            # Call detect_domain_and_role if available
+            # Call LLM-powered detection if available, fallback to pattern matching
             perception_agent = agents["perception"]
-            if hasattr(perception_agent, 'detect_domain_and_role'):
+            if hasattr(perception_agent, 'detect_domain_and_role_llm'):
+                result = await perception_agent.detect_domain_and_role_llm(text)
+                logger.info(f"✅ Domain detected via LLM: {result.get('topic_family')}")
+            elif hasattr(perception_agent, 'detect_domain_and_role'):
                 result = perception_agent.detect_domain_and_role(text)
+                logger.info(f"ℹ️  Domain detected via patterns: {result.get('topic_family')}")
             else:
                 # Fallback: basic domain detection
                 result = {
@@ -511,6 +515,7 @@ def create_app() -> "FastAPI":
                     "suggested_role": "general_assistant",
                     "detected_at": datetime.now().isoformat()
                 }
+                logger.warning("Using fallback domain detection")
             
             return {
                 "status": "success",
@@ -1053,7 +1058,8 @@ def create_app() -> "FastAPI":
             signal_data = await request.json()
             trigger_type = signal_data.get("trigger_type") or signal_data.get("type")  # Support both formats
             topic_content = signal_data.get("topic_content", "")
-            mode = signal_data.get("mode", "balanced")
+            mode = signal_data.get("mode", "on_demand")  # SuggestionMode enum value
+            branch_type = signal_data.get("branch_type", "balanced")  # Branch generation style
             
             # The orchestrator (session_manager) decides whether to run the suggestion pipeline
             should_suggest, reason = await session_manager.handle_suggestion_trigger(session_id, trigger_type, signal_data)
@@ -1063,13 +1069,14 @@ def create_app() -> "FastAPI":
                 
                 # Actually invoke the suggestion pipeline now instead of just logging
                 try:
-                    # Create a SuggestRequest-like object
+                    # Create a SuggestRequest with correct mode enum value
                     suggest_request = SuggestRequest(
-                        mode=mode,
+                        mode=mode,  # Now correctly uses 'on_demand', 'idle_smart', or 'proactive'
                         options={
                             "topic": "user_content",
                             "context": topic_content[:200] if topic_content else "User content generation",
-                            "max_branches": 3
+                            "max_branches": 3,
+                            "branch_type": branch_type  # Pass branch type in options
                         },
                         constraints={}
                     )
@@ -1088,7 +1095,7 @@ def create_app() -> "FastAPI":
                         try:
                             perception_result = await agents["perception"].invoke(
                                 workspace_data,
-                                {"session_id": session_id, "mode": mode}
+                                {"session_id": session_id, "mode": branch_type}  # Use branch_type for agent mode
                             )
                         except Exception as e:
                             logger.warning(f"Perception agent failed: {e}")
@@ -1115,7 +1122,7 @@ def create_app() -> "FastAPI":
                                 workspace_data,
                                 {
                                     "session_id": session_id,
-                                    "mode": mode,
+                                    "mode": branch_type,  # Use branch_type for agent mode
                                     "analysis": perception_result,
                                     "max_branches": 3
                                 }
@@ -1411,35 +1418,56 @@ def create_app() -> "FastAPI":
             # Convert branches to ProjectionSchema format
             formatted_projections = {}
             for i, branch in enumerate(verified_branches[:max_branches]):
-                # Map required ProjectionSchema fields
-                content = branch.get("content")
-                # Flatten title if missing
+                # Production fix: Extract fields intelligently from flat or nested structure
+                # The LLM can return either:
+                # 1. Flat: {title: "...", paragraph: "...", events: [...]}
+                # 2. Nested: {content: {title: "...", paragraph: "..."}, events: [...]}
+                
+                # Try to get title from multiple possible locations
                 title = branch.get("title")
-                if not title and isinstance(content, dict):
-                    title = content.get("title")
-                # Accept both 'content' as dict or str; if dict, try 'paragraph' or join values
-                if isinstance(content, dict):
-                    paragraph = content.get("paragraph") or content.get("text") or ""
-                elif isinstance(content, str):
-                    paragraph = content
-                else:
-                    paragraph = ""
+                paragraph = branch.get("paragraph", "")
                 events = branch.get("events", [])
                 flags = branch.get("flags", {})
+                
+                # If title/paragraph not at top level, check nested 'content'
+                if not title or not paragraph:
+                    content = branch.get("content")
+                    if isinstance(content, dict):
+                        if not title:
+                            title = content.get("title")
+                        if not paragraph:
+                            paragraph = content.get("paragraph") or content.get("text") or ""
+                
+                # Final fallback: generate paragraph from events if still missing
+                if not paragraph and events:
+                    event_summaries = [evt.get('summary', '') for evt in events[:3] 
+                                      if isinstance(evt, dict) and evt.get('summary')]
+                    if event_summaries:
+                        paragraph = ' '.join(event_summaries)
+                
+                # Ensure we have at least a title
+                if not title:
+                    title = f"Suggestion {i + 1}"
+                
                 branch_type = branch.get("branch_type", "balanced")
                 score = branch.get("score")
-                # Only allow schema-compliant fields
+                
+                # Create properly formatted projection
                 formatted = {
                     "title": title,
                     "paragraph": paragraph,
                     "events": events,
                     "flags": flags,
-                    "branch_type": branch_type,
-                    "score": score
+                    "branch_type": branch_type
                 }
-                # Remove any None values (optional, for strictness)
-                formatted = {k: v for k, v in formatted.items() if v is not None}
-                formatted_projections[f"branch_{i}"] = formatted
+                
+                # Add score if present
+                if score is not None:
+                    formatted["score"] = score
+                
+                # Use descriptive keys (A, B, C) for better frontend compatibility
+                projection_key = chr(65 + i)  # A, B, C
+                formatted_projections[projection_key] = formatted
 
             return SuggestionsResponse(
                 session_id=session_id,
@@ -1539,6 +1567,172 @@ def create_app() -> "FastAPI":
 
         except Exception as e:
             logger.error(f"Failed to get snapshot: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @app.get("/api/session/{session_id}/analytics")
+    async def get_session_analytics(session_id: str):
+        """Get real-time analytics: facts, characters, story metrics from workspace"""
+        try:
+            if not session_manager:
+                raise HTTPException(
+                    status_code=500, detail="Session manager not initialized"
+                )
+
+            workspace = await session_manager.load_workspace(session_id)
+            if not workspace:
+                raise HTTPException(status_code=404, detail="Session not found")
+
+            # Extract real data from workspace
+            workspace_dict = workspace if isinstance(workspace, dict) else (
+                workspace.model_dump() if hasattr(workspace, 'model_dump') else workspace.__dict__
+            )
+            
+            # Extract characters
+            characters = workspace_dict.get('characters', {})
+            character_list = []
+            for char_name, char_data in characters.items():
+                if isinstance(char_data, dict):
+                    character_list.append({
+                        'name': char_name,
+                        'traits': char_data.get('traits', []),
+                        'consistency': 'consistent'  # Can be enhanced with real analysis
+                    })
+                else:
+                    character_list.append({
+                        'name': char_name,
+                        'traits': [],
+                        'consistency': 'unknown'
+                    })
+            
+            # Extract facts/events for fact checking
+            events = workspace_dict.get('events', [])
+            kb_triples = workspace_dict.get('kb_triples', [])
+            facts_verified = len(kb_triples)  # Knowledge base triples are verified facts
+            facts_total = len(events) + len(kb_triples)
+            
+            fact_check_status = {
+                'verified': facts_verified,
+                'total': facts_total,
+                'percentage': (facts_verified / facts_total * 100) if facts_total > 0 else 100,
+                'status': 'all_verified' if facts_verified == facts_total else 'partial'
+            }
+            
+            # Story metrics
+            content = workspace_dict.get('topic_content', '')
+            word_count = len(content.split()) if content else 0
+            
+            metadata = workspace_dict.get('metadata', {})
+            if isinstance(metadata, dict):
+                metadata_word_count = metadata.get('word_count', word_count)
+            else:
+                metadata_word_count = word_count
+            
+            story_metrics = {
+                'word_count': metadata_word_count,
+                'character_count': len(characters),
+                'event_count': len(events),
+                'branch_count': len(workspace_dict.get('projections', {}))
+            }
+            
+            return {
+                'session_id': session_id,
+                'fact_check': fact_check_status,
+                'characters': character_list,
+                'story_metrics': story_metrics,
+                'timestamp': datetime.now().isoformat()
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to get analytics for session {session_id}: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @app.get("/api/session/{session_id}/graph")
+    async def get_session_graph(session_id: str):
+        """Get knowledge graph nodes and edges for visualization"""
+        try:
+            if not session_manager:
+                raise HTTPException(
+                    status_code=500, detail="Session manager not initialized"
+                )
+
+            workspace = await session_manager.load_workspace(session_id)
+            if not workspace:
+                raise HTTPException(status_code=404, detail="Session not found")
+
+            # Extract graph data from workspace
+            workspace_dict = workspace if isinstance(workspace, dict) else (
+                workspace.model_dump() if hasattr(workspace, 'model_dump') else workspace.__dict__
+            )
+            
+            # Get graph from workspace or build from events/characters
+            graph_data = workspace_dict.get('graph', {})
+            
+            # If graph is empty, build basic graph from events and characters
+            if not graph_data or not graph_data.get('nodes'):
+                nodes = []
+                edges = []
+                
+                # Add character nodes
+                characters = workspace_dict.get('characters', {})
+                for char_name, char_data in characters.items():
+                    nodes.append({
+                        'id': f'char_{char_name}',
+                        'type': 'character',
+                        'title': char_name,
+                        'text': ', '.join(char_data.get('traits', [])) if isinstance(char_data, dict) else '',
+                        'confidence': 1.0
+                    })
+                
+                # Add event nodes
+                events = workspace_dict.get('events', [])
+                for i, event in enumerate(events):
+                    if isinstance(event, dict):
+                        event_id = event.get('id', f'event_{i}')
+                        nodes.append({
+                            'id': event_id,
+                            'type': 'event',
+                            'title': event.get('summary', f'Event {i+1}'),
+                            'text': event.get('summary', ''),
+                            'actor': event.get('actor'),
+                            'confidence': event.get('confidence', 0.9)
+                        })
+                        
+                        # Create edge if actor matches a character
+                        actor = event.get('actor')
+                        if actor and f'char_{actor}' in [n['id'] for n in nodes]:
+                            edges.append({
+                                'source': f'char_{actor}',
+                                'target': event_id,
+                                'type': 'performs',
+                                'confidence': event.get('confidence', 0.9)
+                            })
+                
+                # Add temporal edges between consecutive events
+                for i in range(len(events) - 1):
+                    if isinstance(events[i], dict) and isinstance(events[i+1], dict):
+                        source_id = events[i].get('id', f'event_{i}')
+                        target_id = events[i+1].get('id', f'event_{i+1}')
+                        edges.append({
+                            'source': source_id,
+                            'target': target_id,
+                            'type': 'temporal',
+                            'confidence': 0.8
+                        })
+                
+                graph_data = {
+                    'nodes': nodes,
+                    'edges': edges
+                }
+            
+            return {
+                'session_id': session_id,
+                'nodes': graph_data.get('nodes', []),
+                'edges': graph_data.get('edges', []),
+                'timestamp': datetime.now().isoformat()
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to get graph for session {session_id}: {e}")
             raise HTTPException(status_code=500, detail=str(e))
 
     # Simple health endpoint
