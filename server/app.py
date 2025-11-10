@@ -486,6 +486,42 @@ def create_app() -> "FastAPI":
             logger.error(f"Perception analysis failed: {e}")
             raise HTTPException(status_code=500, detail=str(e))
 
+    @app.post("/api/agents/perception/detect-domain")
+    async def perception_detect_domain(request: Request):
+        """Detect domain and role from input text"""
+        try:
+            if not agents.get("perception"):
+                raise HTTPException(status_code=500, detail="Perception agent not available")
+            
+            data = await request.json()
+            text = data.get("text", "") or data.get("content", "") or data.get("input_text", "")
+            
+            if not text:
+                raise HTTPException(status_code=400, detail="text, content, or input_text required")
+            
+            # Call detect_domain_and_role if available
+            perception_agent = agents["perception"]
+            if hasattr(perception_agent, 'detect_domain_and_role'):
+                result = perception_agent.detect_domain_and_role(text)
+            else:
+                # Fallback: basic domain detection
+                result = {
+                    "domain": "general",
+                    "confidence": 0.5,
+                    "suggested_role": "general_assistant",
+                    "detected_at": datetime.now().isoformat()
+                }
+            
+            return {
+                "status": "success",
+                "domain_info": result,
+                "timestamp": datetime.now().isoformat()
+            }
+            
+        except Exception as e:
+            logger.error(f"Domain detection failed: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+
     @app.post("/api/agents/planner/generate")
     async def planner_generate(request: Request):
         """Direct planner agent generation with production-grade error handling"""
@@ -1454,48 +1490,89 @@ def create_app() -> "FastAPI":
 
     @app.get("/health/database")
     async def database_health_check():
-        """Database health check endpoint"""
+        """Database health check endpoint - returns 200 with partial status"""
         try:
             db_status = {}
+            all_healthy = True
+            critical_down = False
+            
             if session_manager and hasattr(session_manager, 'workspace_manager'):
-                # Check MongoDB
+                # Check MongoDB (critical)
                 try:
                     from dependencies import get_container
                     container = get_container()
                     if container and hasattr(container, 'mongo_client'):
                         mongo_client = container.mongo_client()
-                        await mongo_client.admin.command("ping")
-                        db_status["mongodb"] = "healthy"
+                        # Use timeout for health check
+                        try:
+                            await asyncio.wait_for(
+                                mongo_client.admin.command("ping"),
+                                timeout=2.0
+                            )
+                            db_status["mongodb"] = "healthy"
+                        except asyncio.TimeoutError:
+                            db_status["mongodb"] = "timeout"
+                            critical_down = True
+                            all_healthy = False
                     else:
                         db_status["mongodb"] = "not_configured"
+                        all_healthy = False
                 except Exception as e:
                     db_status["mongodb"] = f"error: {str(e)}"
+                    critical_down = True
+                    all_healthy = False
                 
-                # Check ArangoDB  
+                # Check ArangoDB (optional, not critical)
                 try:
                     if container and hasattr(container, 'arango_client'):
                         arango_client = container.arango_client()
-                        # Simple ping operation
-                        arango_client.version()
+                        # Simple ping operation with timeout
+                        await asyncio.wait_for(
+                            asyncio.to_thread(arango_client.version),
+                            timeout=2.0
+                        )
                         db_status["arangodb"] = "healthy"
                     else:
                         db_status["arangodb"] = "not_configured"
+                        all_healthy = False
+                except asyncio.TimeoutError:
+                    db_status["arangodb"] = "timeout"
+                    all_healthy = False
                 except Exception as e:
                     db_status["arangodb"] = f"error: {str(e)}"
+                    all_healthy = False
             else:
                 db_status = {"status": "session_manager_not_initialized"}
+                all_healthy = False
             
-            return {
-                "status": "healthy" if all(v == "healthy" for v in db_status.values() if "error" not in str(v)) else "degraded",
-                "databases": db_status,
-                "timestamp": datetime.now().isoformat()
-            }
+            # Determine overall status
+            if critical_down:
+                overall_status = "critical"
+            elif all_healthy:
+                overall_status = "healthy"
+            else:
+                overall_status = "degraded"
+            
+            # Return 200 unless critical services are down
+            status_code = 503 if critical_down else 200
+            
+            return JSONResponse(
+                status_code=status_code,
+                content={
+                    "status": overall_status,
+                    "databases": db_status,
+                    "timestamp": datetime.now().isoformat()
+                }
+            )
         except Exception as e:
-            return {
-                "status": "error",
-                "error": str(e),
-                "timestamp": datetime.now().isoformat()
-            }
+            return JSONResponse(
+                status_code=200,  # Return 200 even on error, indicate in status
+                content={
+                    "status": "error",
+                    "error": str(e),
+                    "timestamp": datetime.now().isoformat()
+                }
+            )
 
     @app.get("/health/agents")
     async def agents_health_check():

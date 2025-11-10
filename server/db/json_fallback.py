@@ -356,11 +356,8 @@ class JSONFallbackClient:
             if snapshots_dir.exists():
                 for snapshot_file in snapshots_dir.glob("snapshot_*.json"):
                     try:
-                        async with aiofiles.open(
-                            snapshot_file, "r", encoding="utf-8"
-                        ) as f:
-                            snapshot_data = await self._async_read_json(snapshot_file)
-                            snapshots.append(snapshot_data)
+                        snapshot_data = await self._async_read_json(snapshot_file)
+                        snapshots.append(snapshot_data)
                     except Exception as e:
                         logger.warning(f"Failed to read snapshot {snapshot_file}: {e}")
                         continue

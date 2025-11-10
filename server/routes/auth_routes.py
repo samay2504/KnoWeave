@@ -80,8 +80,9 @@ async def save_oauth_state_to_db(state: str, state_data: dict, mongo_client):
             db = mongo_client.db
             doc = {
                 "state": state,
-                "created_at": datetime.utcnow(),
-                **state_data
+                "created_at": datetime.utcnow(),  # MongoDB uses datetime
+                "created_at_epoch": state_data.get("created_at", time.time()),  # Also store epoch for comparison
+                **{k: v for k, v in state_data.items() if k != "created_at"}
             }
             await db.oauth_states.insert_one(doc)
             logger.debug(f"OAuth state saved to MongoDB: {state}")
@@ -95,13 +96,21 @@ async def consume_state_from_db(state: str, mongo_client) -> Optional[dict]:
             db = mongo_client.db
             doc = await db.oauth_states.find_one_and_delete({"state": state})
             if doc:
-                # Check expiration
-                created_at = doc.get("created_at")
-                if created_at:
-                    age = (datetime.utcnow() - created_at).total_seconds()
+                # Check expiration using epoch time for consistent comparison
+                created_at_epoch = doc.get("created_at_epoch")
+                if created_at_epoch:
+                    age = time.time() - created_at_epoch
                     if age > 600:  # 10 minutes
                         logger.warning(f"OAuth state expired (age: {age}s): {state}")
                         return None
+                elif doc.get("created_at"):
+                    # Fallback: convert datetime to epoch
+                    created_at = doc.get("created_at")
+                    if isinstance(created_at, datetime):
+                        age = (datetime.utcnow() - created_at).total_seconds()
+                        if age > 600:
+                            logger.warning(f"OAuth state expired (age: {age}s): {state}")
+                            return None
                 logger.debug(f"OAuth state consumed from MongoDB: {state}")
                 return doc
     except Exception as e:

@@ -189,12 +189,41 @@ async def generate_prompt(
                 detail=f"Invalid mode. Must be one of: {list(PTG_MODES.keys())}"
             )
 
-        # Generate canonical prompt using PTG
-        canonical_prompt = session_manager.ptg.generate_canonical_prompt(
-            user_prompt=request.user_prompt,
-            agent_type=request.agent_type,
-            mode=mode
-        )
+        # Check if PTG is available and has the new signature
+        if not hasattr(session_manager, 'ptg'):
+            raise HTTPException(
+                status_code=503,
+                detail="PTG system not initialized in session manager"
+            )
+
+        # Try to generate canonical prompt with proper parameters
+        try:
+            # New signature requires: agent_name, session_id, topic, topic_descriptor, input_data, mode
+            canonical_prompt = session_manager.ptg.generate_canonical_prompt(
+                agent_name=request.agent_type,
+                session_id="ptg_standalone",  # Standalone PTG call without session
+                topic=request.user_prompt[:100],  # Use first part as topic
+                topic_descriptor=request.user_prompt,
+                input_data={"user_prompt": request.user_prompt},
+                mode=mode
+            )
+            # Extract the actual prompt string from the result
+            if isinstance(canonical_prompt, dict):
+                prompt_text = canonical_prompt.get("prompt", str(canonical_prompt))
+            else:
+                prompt_text = str(canonical_prompt)
+        except TypeError:
+            # Fallback to old signature (user_prompt, agent_type, mode)
+            try:
+                prompt_text = session_manager.ptg.generate_canonical_prompt(
+                    user_prompt=request.user_prompt,
+                    agent_type=request.agent_type,
+                    mode=mode
+                )
+            except Exception as fallback_err:
+                logger.error(f"PTG fallback also failed: {fallback_err}")
+                # Last resort: simple prompt wrapper
+                prompt_text = f"[{mode.upper()} MODE] {request.user_prompt}"
 
         # Get mode configuration
         mode_config = PTG_MODES[mode].copy()
@@ -204,20 +233,22 @@ async def generate_prompt(
         logger.info(f"Generated prompt for mode: {mode}, agent: {request.agent_type}")
 
         return PromptGenerationResponse(
-            canonical_prompt=canonical_prompt,
+            canonical_prompt=prompt_text,
             mode=mode,
             agent_type=request.agent_type,
             metadata={
                 "mode_config": mode_config,
                 "timestamp": datetime.now().isoformat(),
-                "prompt_length": len(canonical_prompt),
+                "prompt_length": len(prompt_text),
                 "user_prompt_length": len(request.user_prompt)
             }
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error generating prompt: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error generating prompt: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"PTG generation failed: {str(e)}")
 
 @ptg_router.get("/status")
 async def get_ptg_status(
