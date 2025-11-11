@@ -221,6 +221,14 @@ async def lifespan(app: "FastAPI"):
                         agent.llm_provider = llm_provider
                         logger.info(f"LLM provider assigned to {agent_name} agent")
             
+            # PRODUCTION FIX: Inject global agents into routes.py
+            try:
+                from api.routes import set_global_dependencies
+                set_global_dependencies(agents, session_manager)
+                logger.info("✅ Global agents injected into API routes")
+            except Exception as inject_err:
+                logger.warning(f"⚠️  Could not inject global agents: {inject_err}")
+            
             logger.info("All services initialized successfully with production configuration")
 
             yield

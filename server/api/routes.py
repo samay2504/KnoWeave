@@ -29,6 +29,21 @@ from utils.schemas import WorkspaceSchema, ProjectionSchema, PerceptionOutput
 from utils.logging_cfg import get_api_logger
 from server_config import ServerConfig
 
+# Global references to agents dict from app.py - PRODUCTION FIX
+_global_agents = None
+_global_session_manager = None
+
+
+def set_global_dependencies(agents_dict: Dict, session_mgr):
+    """
+    Production fix: Use the SAME agent instances from app.py
+    This ensures the graph_manager has the actual data
+    """
+    global _global_agents, _global_session_manager
+    _global_agents = agents_dict
+    _global_session_manager = session_mgr
+    logger.info(f"✅ Routes now using global agents: {list(agents_dict.keys())}")
+
 
 # Create AgentOrchestrator class since it doesn't exist
 class AgentOrchestrator:
@@ -436,12 +451,20 @@ async def run_complete_workflow(
 async def get_knowledge_graph(
     session_id: str, orchestrator: AgentOrchestrator = Depends(get_orchestrator)
 ):
-    """Get knowledge graph for session"""
+    """Get knowledge graph for session - PRODUCTION VERSION"""
     try:
         logger.info(f"Getting knowledge graph for session {session_id}")
 
-        session_manager = await orchestrator.get_session_manager()
-        graph_manager = await orchestrator.get_graph_manager()
+        # PRODUCTION FIX: Use global agents from app.py instead of creating new instances
+        if _global_agents and _global_agents.get("graph_manager"):
+            graph_manager = _global_agents["graph_manager"]
+            session_manager = _global_session_manager
+            logger.info("✅ Using global graph_manager with actual data")
+        else:
+            # Fallback to orchestrator (creates new instance - won't have data)
+            logger.warning("⚠️  Using orchestrator fallback - data may be missing")
+            session_manager = await orchestrator.get_session_manager()
+            graph_manager = await orchestrator.get_graph_manager()
 
         workspace = await session_manager.get_session(session_id)
         if not workspace:
@@ -454,11 +477,16 @@ async def get_knowledge_graph(
 
         if graph_manager:
             try:
+                # This method now exists and has data from the global instance
                 nodes, edges = await graph_manager.get_graph_structure(
                     workspace.session_id
                 )
+                logger.info(f"✅ Graph retrieved: {len(nodes)} nodes, {len(edges)} edges")
+            except AttributeError as attr_err:
+                logger.error(f"❌ Graph method missing: {attr_err} - graph_manager type: {type(graph_manager)}")
+                raise
             except Exception as e:
-                logger.warning(f"Graph retrieval failed: {e}")
+                logger.warning(f"⚠️  Graph retrieval failed: {e}")
 
         # Get triples from workspace if available
         if hasattr(workspace, "kb_triples"):
