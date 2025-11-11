@@ -690,12 +690,17 @@ function App() {
           setUser(userData);
           localStorage.setItem('user', JSON.stringify(userData));
         } else {
+          // 401 is expected when not logged in - don't log as error
+          if (response.status !== 401) {
+            console.warn(`Auth check returned ${response.status}`);
+          }
           // Clear invalid stored data
           localStorage.removeItem('user');
           setUser(null);
         }
       } catch (error) {
-        console.error('Auth check failed:', error);
+        // Network errors are worth logging
+        console.error('Auth check network error:', error);
         localStorage.removeItem('user');
         setUser(null);
       } finally {

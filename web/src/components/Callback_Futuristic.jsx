@@ -8,7 +8,6 @@ const Callback = ({ onAuthSuccess, onAuthFailure }) => {
   const [error, setError] = useState(null);
   const [progress, setProgress] = useState(0);
   const [userInfo, setUserInfo] = useState(null);
-  const [redirectCountdown, setRedirectCountdown] = useState(null);
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const abortControllerRef = useRef(null);
@@ -105,6 +104,50 @@ const Callback = ({ onAuthSuccess, onAuthFailure }) => {
         }
 
         setUserInfo(data.user);
+        
+        // PRODUCTION FIX: Wait for browser to process Set-Cookie header before polling
+        // The callback response includes Set-Cookie, but browser needs time to save it
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        // Poll /api/me to confirm session is established
+        const maxPolls = 5;
+        const pollInterval = 300; // Increased from 200ms
+        
+        const pollMe = async (attemptNumber) => {
+          try {
+            const meResponse = await fetch(`${API_BASE_URL}/api/me`, {
+              credentials: 'include',
+              headers: { 'Content-Type': 'application/json' }
+            });
+            
+            if (meResponse.ok) {
+              const meData = await meResponse.json();
+              console.log('✅ Session confirmed:', meData);
+              return true;
+            }
+            return false;
+          } catch (e) {
+            console.warn(`/api/me poll attempt ${attemptNumber + 1} failed:`, e);
+            return false;
+          }
+        };
+        
+        // Try polling with exponential backoff
+        let sessionConfirmed = false;
+        for (let i = 0; i < maxPolls && !sessionConfirmed; i++) {
+          sessionConfirmed = await pollMe(i);
+          
+          if (!sessionConfirmed && i < maxPolls - 1) {
+            // Wait between polls with exponential backoff
+            await new Promise(resolve => setTimeout(resolve, pollInterval * Math.pow(1.5, i)));
+          }
+        }
+        
+        if (!sessionConfirmed) {
+          console.warn('⚠️ Session confirmation polling failed - cookie may not be set correctly');
+          console.warn('Proceeding with login using callback data');
+        }
+        
         setProgress(100);
         setStatus('success');
 
@@ -276,20 +319,6 @@ const Callback = ({ onAuthSuccess, onAuthFailure }) => {
                   <p className="text-white font-medium">{userInfo.name}</p>
                   <p className="cyber-subheading text-sm">{userInfo.email}</p>
                 </div>
-              </div>
-            </div>
-          )}
-
-          {/* Redirect Countdown */}
-          {redirectCountdown !== null && status === 'success' && (
-            <div className="glass rounded-xl p-4 border-cyber mb-6">
-              <div className="flex items-center justify-center space-x-2">
-                <svg className="w-5 h-5 text-neon-orange-400 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <p className="text-white">
-                  Redirecting in <span className="text-neon-orange-400 font-bold">{redirectCountdown}</span> seconds
-                </p>
               </div>
             </div>
           )}
