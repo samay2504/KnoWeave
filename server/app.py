@@ -1576,6 +1576,11 @@ def create_app() -> "FastAPI":
             perception_agent = agents.get("perception")
             evaluator_agent = agents.get("evaluator")
             
+            # PRODUCTION FIX: Initialize llm_provider_name at function scope to prevent UnboundLocalError
+            llm_provider_name = None
+            if hasattr(perception_agent, 'llm_provider') and perception_agent and perception_agent.llm_provider:
+                llm_provider_name = perception_agent.llm_provider.provider if hasattr(perception_agent.llm_provider, 'provider') else 'unknown'
+            
             character_list = []
             facts_verified = 0
             facts_total = 0
@@ -1583,11 +1588,6 @@ def create_app() -> "FastAPI":
             # Use perception agent to extract and analyze characters with LLM
             if perception_agent and content:
                 try:
-                    # PRODUCTION FIX: Safe attribute access with hasattr
-                    llm_provider_name = None
-                    if hasattr(perception_agent, 'llm_provider') and perception_agent.llm_provider:
-                        llm_provider_name = perception_agent.llm_provider.provider if hasattr(perception_agent.llm_provider, 'provider') else 'unknown'
-                    
                     logger.info(f"🤖 Using Perception Agent with LLM provider: {llm_provider_name or 'None'}")
                     
                     perception_result = await perception_agent.invoke(
