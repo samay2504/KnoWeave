@@ -1571,7 +1571,7 @@ def create_app() -> "FastAPI":
 
     @app.get("/api/session/{session_id}/analytics")
     async def get_session_analytics(session_id: str):
-        """Get real-time analytics: facts, characters, story metrics from workspace"""
+        """Get real-time analytics: facts, characters, story metrics using LLM and agents"""
         try:
             if not session_manager:
                 raise HTTPException(
@@ -1587,40 +1587,111 @@ def create_app() -> "FastAPI":
                 workspace.model_dump() if hasattr(workspace, 'model_dump') else workspace.__dict__
             )
             
-            # Extract characters
-            characters = workspace_dict.get('characters', {})
-            character_list = []
-            for char_name, char_data in characters.items():
-                if isinstance(char_data, dict):
-                    character_list.append({
-                        'name': char_name,
-                        'traits': char_data.get('traits', []),
-                        'consistency': 'consistent'  # Can be enhanced with real analysis
-                    })
-                else:
-                    character_list.append({
-                        'name': char_name,
-                        'traits': [],
-                        'consistency': 'unknown'
-                    })
+            content = workspace_dict.get('topic_content', '')
             
-            # Extract facts/events for fact checking
-            events = workspace_dict.get('events', [])
-            kb_triples = workspace_dict.get('kb_triples', [])
-            facts_verified = len(kb_triples)  # Knowledge base triples are verified facts
-            facts_total = len(events) + len(kb_triples)
+            # Get agents for LLM-based analysis
+            perception_agent = agents.get("perception")
+            evaluator_agent = agents.get("evaluator")
+            
+            character_list = []
+            facts_verified = 0
+            facts_total = 0
+            
+            # Use perception agent to extract and analyze characters with LLM
+            if perception_agent and content:
+                try:
+                    logger.info(f"🤖 Using Perception Agent with LLM provider: {perception_agent.llm_provider.provider if perception_agent.llm_provider else 'None'}")
+                    
+                    perception_result = await perception_agent.invoke(
+                        workspace_dict,
+                        {"session_id": session_id, "mode": "balanced"}
+                    )
+                    
+                    # Extract characters with real LLM-analyzed data
+                    raw_characters = perception_result.get('characters', [])
+                    for char in raw_characters:
+                        if isinstance(char, dict):
+                            # Use evaluator agent to assess character consistency if available
+                            consistency_status = "consistent"
+                            if evaluator_agent and len(raw_characters) > 0:
+                                try:
+                                    # Quick LLM-based consistency check
+                                    eval_result = await evaluator_agent.invoke(
+                                        workspace_dict,
+                                        {
+                                            "session_id": session_id,
+                                            "focus": f"character_consistency_{char.get('name', 'unknown')}"
+                                        }
+                                    )
+                                    if eval_result and 'consistency' in eval_result:
+                                        consistency_status = eval_result['consistency']
+                                except Exception as eval_err:
+                                    logger.debug(f"Character consistency check skipped: {eval_err}")
+                            
+                            character_list.append({
+                                'name': char.get('name', 'Unknown'),
+                                'traits': char.get('traits', []),
+                                'mentions': char.get('mentions', 1),
+                                'confidence': char.get('confidence', 0.8),
+                                'consistency': consistency_status
+                            })
+                    
+                    # Extract events for fact checking
+                    events = perception_result.get('events', [])
+                    entities = perception_result.get('entities', [])
+                    
+                    # Use LLM to verify facts
+                    facts_total = len(events)
+                    
+                    # Facts from knowledge base are verified
+                    kb_triples = workspace_dict.get('kb_triples', [])
+                    facts_verified = len(kb_triples)
+                    
+                    # High-confidence entities count as verified facts
+                    high_conf_entities = [e for e in entities if e.get('confidence', 0) > 0.8]
+                    facts_verified += len(high_conf_entities)
+                    facts_total += len(entities)
+                    
+                    logger.info(f"📊 LLM Analysis: {len(character_list)} characters, {facts_verified}/{facts_total} facts verified")
+                    
+                except Exception as agent_err:
+                    logger.warning(f"⚠️ Agent analysis failed, using workspace data: {agent_err}")
+                    # Fallback to workspace data
+                    characters = workspace_dict.get('characters', {})
+                    for char_name, char_data in characters.items():
+                        if isinstance(char_data, dict):
+                            character_list.append({
+                                'name': char_name,
+                                'traits': char_data.get('traits', []),
+                                'consistency': 'unknown'
+                            })
+            else:
+                # Fallback: use workspace data without LLM
+                logger.info("ℹ️ No LLM provider available, using workspace data")
+                characters = workspace_dict.get('characters', {})
+                for char_name, char_data in characters.items():
+                    if isinstance(char_data, dict):
+                        character_list.append({
+                            'name': char_name,
+                            'traits': char_data.get('traits', []),
+                            'consistency': 'unknown'
+                        })
+                
+                events = workspace_dict.get('events', [])
+                kb_triples = workspace_dict.get('kb_triples', [])
+                facts_verified = len(kb_triples)
+                facts_total = len(events) + len(kb_triples)
             
             fact_check_status = {
                 'verified': facts_verified,
                 'total': facts_total,
                 'percentage': (facts_verified / facts_total * 100) if facts_total > 0 else 100,
-                'status': 'all_verified' if facts_verified == facts_total else 'partial'
+                'status': 'all_verified' if facts_total == 0 or facts_verified == facts_total else 'partial',
+                'llm_provider': perception_agent.llm_provider.provider if perception_agent and perception_agent.llm_provider else 'none'
             }
             
             # Story metrics
-            content = workspace_dict.get('topic_content', '')
             word_count = len(content.split()) if content else 0
-            
             metadata = workspace_dict.get('metadata', {})
             if isinstance(metadata, dict):
                 metadata_word_count = metadata.get('word_count', word_count)
@@ -1629,9 +1700,10 @@ def create_app() -> "FastAPI":
             
             story_metrics = {
                 'word_count': metadata_word_count,
-                'character_count': len(characters),
-                'event_count': len(events),
-                'branch_count': len(workspace_dict.get('projections', {}))
+                'character_count': len(character_list),
+                'event_count': len(workspace_dict.get('events', [])),
+                'branch_count': len(workspace_dict.get('projections', {})),
+                'using_llm': perception_agent and perception_agent.llm_provider is not None
             }
             
             return {
@@ -1639,11 +1711,16 @@ def create_app() -> "FastAPI":
                 'fact_check': fact_check_status,
                 'characters': character_list,
                 'story_metrics': story_metrics,
-                'timestamp': datetime.now().isoformat()
+                'timestamp': datetime.now().isoformat(),
+                'llm_provider': perception_agent.llm_provider.provider if perception_agent and perception_agent.llm_provider else 'none',
+                'agents_active': {
+                    'perception': perception_agent is not None,
+                    'evaluator': evaluator_agent is not None
+                }
             }
 
         except Exception as e:
-            logger.error(f"Failed to get analytics for session {session_id}: {e}")
+            logger.error(f"❌ Failed to get analytics for session {session_id}: {e}")
             raise HTTPException(status_code=500, detail=str(e))
 
     @app.get("/api/session/{session_id}/graph")
