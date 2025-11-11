@@ -225,9 +225,13 @@ async def lifespan(app: "FastAPI"):
             try:
                 from api.routes import set_global_dependencies
                 set_global_dependencies(agents, session_manager)
-                logger.info("✅ Global agents injected into API routes")
+                logger.info("✅ Global agents and session_manager injected into API routes")
+            except ImportError as import_err:
+                logger.error(f"❌ Could not import set_global_dependencies: {import_err}")
+                logger.error("Routes will create new agent instances - graph data will be missing!")
             except Exception as inject_err:
-                logger.warning(f"⚠️  Could not inject global agents: {inject_err}")
+                logger.error(f"❌ Failed to inject global agents: {inject_err}")
+                logger.error("Routes will not have access to populated agent instances!")
             
             logger.info("All services initialized successfully with production configuration")
 
@@ -384,18 +388,6 @@ def create_app() -> "FastAPI":
         if HEALTH_ROUTER_AVAILABLE and get_health_router is not None:
             app.include_router(get_health_router())
             logger.info("Health routes loaded successfully")
-        else:
-            # Create fallback health endpoint
-            @app.get("/health")
-            @app.get("/api/health")
-            async def health_check():
-                """Fallback health check endpoint"""
-                return {
-                    "status": "healthy",
-                    "timestamp": datetime.utcnow().isoformat(),
-                    "service": "human-ai-co-creation"
-                }
-            logger.info("Fallback health endpoint created")
     except Exception as e:
         logger.warning(f"Failed to load health routes: {e}")
 
@@ -1038,23 +1030,6 @@ def create_app() -> "FastAPI":
                 logger.error(f"Error closing WebSocket: {close_e}")
         finally:
             logger.info("WebSocket connection closed")
-
-    # Add WebSocket info endpoint for testing
-    @app.get("/ws/info")
-    async def websocket_info():
-        """Get WebSocket endpoint information"""
-        return {
-            "websocket_url": "/ws",
-            "status": "available",
-            "supported_message_types": [
-                "ping",
-                "subscribe", 
-                "suggestion_request",
-                "health"
-            ],
-            "description": "WebSocket endpoint for real-time communication",
-            "timestamp": datetime.now().isoformat()
-        }
 
     @app.post("/api/session/{session_id}/suggestion_signal")
     async def suggestion_signal(session_id: str, request: Request):
