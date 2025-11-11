@@ -91,6 +91,36 @@ if __name__ == "__main__":
         # Change to server directory for consistent imports
         os.chdir(str(server_dir))
 
+        # PRODUCTION FIX: Suppress Windows asyncio socket cleanup errors
+        # These are harmless but pollute logs on Windows systems
+        import asyncio
+        import socket
+        
+        def custom_exception_handler(loop, context):
+            """Suppress harmless Windows socket cleanup errors"""
+            exception = context.get('exception')
+            
+            # Windows socket cleanup error - harmless, suppress it
+            if isinstance(exception, (ConnectionResetError, ConnectionAbortedError)):
+                error_msg = str(exception)
+                # WinError 10054: Connection forcibly closed by remote host
+                if 'WinError 10054' in error_msg or 'forcibly closed' in error_msg:
+                    # This happens when client closes connection during cleanup
+                    # It's a Windows asyncio quirk, not a real error
+                    return
+            
+            # For other exceptions, use default handling
+            if exception:
+                loop.default_exception_handler(context)
+        
+        # Apply custom exception handler to asyncio loop
+        try:
+            loop = asyncio.get_event_loop()
+            loop.set_exception_handler(custom_exception_handler)
+        except RuntimeError:
+            # Loop not available yet, will be set when uvicorn starts
+            pass
+
         # Import and run the server
         from server.app import app
         import uvicorn

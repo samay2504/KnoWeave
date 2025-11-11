@@ -139,6 +139,33 @@ async def lifespan(app: "FastAPI"):
     logger.info("Starting Human-AI Co-Creation System")
     logger.info(f"Server config: Host={config.host}:{config.port}, Debug={config.debug}")
 
+    # PRODUCTION FIX: Suppress Windows asyncio socket cleanup errors
+    # These are harmless ConnectionResetError on Windows when client closes connection
+    import asyncio
+    import platform
+    
+    if platform.system() == 'Windows':
+        def windows_exception_handler(loop, context):
+            """Suppress harmless Windows socket cleanup errors"""
+            exception = context.get('exception')
+            
+            # Windows socket cleanup error (WinError 10054)
+            if isinstance(exception, (ConnectionResetError, ConnectionAbortedError)):
+                error_msg = str(exception)
+                if 'WinError 10054' in error_msg or 'forcibly closed' in error_msg:
+                    # Client closed connection during cleanup - harmless, suppress it
+                    return
+            
+            # For other exceptions, use default handling
+            loop.default_exception_handler(context)
+        
+        try:
+            loop = asyncio.get_event_loop()
+            loop.set_exception_handler(windows_exception_handler)
+            logger.info("✅ Windows asyncio exception handler configured")
+        except Exception as e:
+            logger.warning(f"Could not set Windows exception handler: {e}")
+
     try:
         # Setup dependencies first
         async with setup_dependencies(config) as container:
