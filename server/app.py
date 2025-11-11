@@ -1583,7 +1583,12 @@ def create_app() -> "FastAPI":
             # Use perception agent to extract and analyze characters with LLM
             if perception_agent and content:
                 try:
-                    logger.info(f"🤖 Using Perception Agent with LLM provider: {perception_agent.llm_provider.provider if perception_agent.llm_provider else 'None'}")
+                    # PRODUCTION FIX: Safe attribute access with hasattr
+                    llm_provider_name = None
+                    if hasattr(perception_agent, 'llm_provider') and perception_agent.llm_provider:
+                        llm_provider_name = perception_agent.llm_provider.provider if hasattr(perception_agent.llm_provider, 'provider') else 'unknown'
+                    
+                    logger.info(f"🤖 Using Perception Agent with LLM provider: {llm_provider_name or 'None'}")
                     
                     perception_result = await perception_agent.invoke(
                         workspace_dict,
@@ -1670,7 +1675,7 @@ def create_app() -> "FastAPI":
                 'total': facts_total,
                 'percentage': (facts_verified / facts_total * 100) if facts_total > 0 else 100,
                 'status': 'all_verified' if facts_total == 0 or facts_verified == facts_total else 'partial',
-                'llm_provider': perception_agent.llm_provider.provider if perception_agent and perception_agent.llm_provider else 'none'
+                'llm_provider': llm_provider_name or 'none'  # PRODUCTION FIX: Use safe variable
             }
             
             # Story metrics
@@ -1686,7 +1691,7 @@ def create_app() -> "FastAPI":
                 'character_count': len(character_list),
                 'event_count': len(workspace_dict.get('events', [])),
                 'branch_count': len(workspace_dict.get('projections', {})),
-                'using_llm': perception_agent and perception_agent.llm_provider is not None
+                'using_llm': hasattr(perception_agent, 'llm_provider') and perception_agent.llm_provider is not None  # PRODUCTION FIX
             }
             
             return {
@@ -1695,7 +1700,7 @@ def create_app() -> "FastAPI":
                 'characters': character_list,
                 'story_metrics': story_metrics,
                 'timestamp': datetime.now().isoformat(),
-                'llm_provider': perception_agent.llm_provider.provider if perception_agent and perception_agent.llm_provider else 'none',
+                'llm_provider': llm_provider_name or 'none',  # PRODUCTION FIX: Use safe variable
                 'agents_active': {
                     'perception': perception_agent is not None,
                     'evaluator': evaluator_agent is not None

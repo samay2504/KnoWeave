@@ -100,6 +100,7 @@ class PerceptionAgent:
         self.nlp_model = None
         self.nlp_type = None
         self.initialized = False
+        self.llm_provider = None  # PRODUCTION FIX: Initialize to prevent AttributeError
 
         # Pattern-based fallbacks
         self.sentence_pattern = re.compile(r"[.!?]+\s+")

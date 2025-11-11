@@ -87,10 +87,14 @@ class Workspace:
             
             if hasattr(self.config, 'MONGODB_URL'):
                 mongodb_url = self.config.MONGODB_URL
+            elif hasattr(self.config, 'mongo_uri'):  # PRODUCTION FIX: ServerConfig uses mongo_uri
+                mongodb_url = self.config.mongo_uri
             elif hasattr(self.config, 'mongodb_url'):
                 mongodb_url = self.config.mongodb_url
             elif isinstance(self.config, dict):
-                mongodb_url = self.config.get('MONGODB_URL') or self.config.get('mongodb_url')
+                mongodb_url = self.config.get('MONGODB_URL') or self.config.get('mongo_uri') or self.config.get('mongodb_url')
+            
+            logger.info(f"🔍 MongoDB URL check: {mongodb_url[:50] if mongodb_url else 'NOT FOUND'}...")
 
             if MOTOR_AVAILABLE and mongodb_url:
                 try:
