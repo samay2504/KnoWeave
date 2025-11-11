@@ -12,9 +12,17 @@ const Callback = ({ onAuthSuccess, onAuthFailure }) => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const abortControllerRef = useRef(null);
+  const hasProcessedRef = useRef(false); // PRODUCTION FIX: Prevent double execution in React StrictMode
 
   useEffect(() => {
     const handleCallback = async () => {
+      // PRODUCTION FIX: Prevent React StrictMode double-execution
+      if (hasProcessedRef.current) {
+        console.log('Callback already processed, skipping duplicate execution');
+        return;
+      }
+      hasProcessedRef.current = true;
+      
       // Create abort controller for request cancellation
       abortControllerRef.current = new AbortController();
       
