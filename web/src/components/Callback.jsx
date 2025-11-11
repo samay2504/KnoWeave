@@ -137,23 +137,24 @@ const Callback = ({ onAuthSuccess, onAuthFailure }) => {
         setProgress(100);
         setStatus('success');
 
-        // Start countdown for redirect
-        let countdown = 3;
-        setRedirectCountdown(countdown);
-        
-        const redirectTimer = setInterval(() => {
-          countdown--;
-          setRedirectCountdown(countdown);
-          
-          if (countdown <= 0) {
-            clearInterval(redirectTimer);
-            onAuthSuccess?.(data.user);
-            navigate('/', { replace: true });
+        // PRODUCTION FIX: Show success briefly, then redirect
+        // Call success callback first
+        if (onAuthSuccess) {
+          try {
+            await onAuthSuccess(data.user);
+          } catch (callbackError) {
+            console.warn('onAuthSuccess callback error:', callbackError);
           }
-        }, 1000);
-
-        // Cleanup function will clear the timer if component unmounts
-        return () => clearInterval(redirectTimer);
+        }
+        
+        // Short delay to show success state, then redirect
+        console.log('✅ Authentication complete, redirecting to home page');
+        setTimeout(() => {
+          navigate('/', { 
+            replace: true,
+            state: { user: data.user, fromAuth: true }
+          });
+        }, 800); // 800ms is enough to show success without feeling slow
 
       } catch (err) {
         if (err.name === 'AbortError') {
