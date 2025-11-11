@@ -822,6 +822,17 @@ class AsyncLLMProvider:
         if hasattr(self.llm, "name"):
             return self.llm.name
         return self.current_provider or "unknown"
+    
+    @property
+    def provider(self) -> str:
+        """Get the provider name for compatibility with agent code."""
+        if self.current_provider:
+            # Extract provider name from composite names like "google_genai_gemini-1.5-flash"
+            if "_" in self.current_provider:
+                parts = self.current_provider.split("_")
+                return parts[0]  # Return "google", "groq", "openai", etc.
+            return self.current_provider
+        return "unknown"
 
     def get_provider_info(self) -> Dict[str, Any]:
         """Get information about the current LLM provider."""

@@ -1585,62 +1585,81 @@ def create_app() -> "FastAPI":
             facts_verified = 0
             facts_total = 0
             
-            # Use perception agent to extract and analyze characters with LLM
-            if perception_agent and content:
+            # PRODUCTION FIX: Use LLM if available, regardless of content (for baseline analytics)
+            if perception_agent:
                 try:
                     logger.info(f"🤖 Using Perception Agent with LLM provider: {llm_provider_name or 'None'}")
                     
-                    perception_result = await perception_agent.invoke(
-                        workspace_dict,
-                        {"session_id": session_id, "mode": "balanced"}
-                    )
-                    
-                    # Extract characters with real LLM-analyzed data
-                    raw_characters = perception_result.get('characters', [])
-                    for char in raw_characters:
-                        if isinstance(char, dict):
-                            # Use evaluator agent to assess character consistency if available
-                            consistency_status = "consistent"
-                            if evaluator_agent and len(raw_characters) > 0:
-                                try:
-                                    # Quick LLM-based consistency check
-                                    eval_result = await evaluator_agent.invoke(
-                                        workspace_dict,
-                                        {
-                                            "session_id": session_id,
-                                            "focus": f"character_consistency_{char.get('name', 'unknown')}"
-                                        }
-                                    )
-                                    if eval_result and 'consistency' in eval_result:
-                                        consistency_status = eval_result['consistency']
-                                except Exception as eval_err:
-                                    logger.debug(f"Character consistency check skipped: {eval_err}")
-                            
-                            character_list.append({
-                                'name': char.get('name', 'Unknown'),
-                                'traits': char.get('traits', []),
-                                'mentions': char.get('mentions', 1),
-                                'confidence': char.get('confidence', 0.8),
-                                'consistency': consistency_status
-                            })
-                    
-                    # Extract events for fact checking
-                    events = perception_result.get('events', [])
-                    entities = perception_result.get('entities', [])
-                    
-                    # Use LLM to verify facts
-                    facts_total = len(events)
-                    
-                    # Facts from knowledge base are verified
-                    kb_triples = workspace_dict.get('kb_triples', [])
-                    facts_verified = len(kb_triples)
-                    
-                    # High-confidence entities count as verified facts
-                    high_conf_entities = [e for e in entities if e.get('confidence', 0) > 0.8]
-                    facts_verified += len(high_conf_entities)
-                    facts_total += len(entities)
-                    
-                    logger.info(f"📊 LLM Analysis: {len(character_list)} characters, {facts_verified}/{facts_total} facts verified")
+                    # Only invoke agent if there's content to analyze
+                    if content:
+                        perception_result = await perception_agent.invoke(
+                            workspace_dict,
+                            {"session_id": session_id, "mode": "balanced"}
+                        )
+                        
+                        # Extract characters with real LLM-analyzed data
+                        raw_characters = perception_result.get('characters', [])
+                        for char in raw_characters:
+                            if isinstance(char, dict):
+                                # Use evaluator agent to assess character consistency if available
+                                consistency_status = "consistent"
+                                if evaluator_agent and len(raw_characters) > 0:
+                                    try:
+                                        # Quick LLM-based consistency check
+                                        eval_result = await evaluator_agent.invoke(
+                                            workspace_dict,
+                                            {
+                                                "session_id": session_id,
+                                                "focus": f"character_consistency_{char.get('name', 'unknown')}"
+                                            }
+                                        )
+                                        if eval_result and 'consistency' in eval_result:
+                                            consistency_status = eval_result['consistency']
+                                    except Exception as eval_err:
+                                        logger.debug(f"Character consistency check skipped: {eval_err}")
+                                
+                                character_list.append({
+                                    'name': char.get('name', 'Unknown'),
+                                    'traits': char.get('traits', []),
+                                    'mentions': char.get('mentions', 1),
+                                    'confidence': char.get('confidence', 0.8),
+                                    'consistency': consistency_status
+                                })
+                        
+                        # Extract events for fact checking
+                        events = perception_result.get('events', [])
+                        entities = perception_result.get('entities', [])
+                        
+                        # Use LLM to verify facts
+                        facts_total = len(events)
+                        
+                        # Facts from knowledge base are verified
+                        kb_triples = workspace_dict.get('kb_triples', [])
+                        facts_verified = len(kb_triples)
+                        
+                        # High-confidence entities count as verified facts
+                        high_conf_entities = [e for e in entities if e.get('confidence', 0) > 0.8]
+                        facts_verified += len(high_conf_entities)
+                        facts_total += len(entities)
+                        
+                        logger.info(f"📊 LLM Analysis: {len(character_list)} characters, {facts_verified}/{facts_total} facts verified")
+                    else:
+                        # Empty session - return baseline analytics with LLM available
+                        logger.info("📝 Empty session - returning baseline analytics with LLM ready")
+                        # Use workspace data as baseline
+                        characters = workspace_dict.get('characters', {})
+                        for char_name, char_data in characters.items():
+                            if isinstance(char_data, dict):
+                                character_list.append({
+                                    'name': char_name,
+                                    'traits': char_data.get('traits', []),
+                                    'consistency': 'unknown'
+                                })
+                        
+                        events = workspace_dict.get('events', [])
+                        kb_triples = workspace_dict.get('kb_triples', [])
+                        facts_verified = len(kb_triples)
+                        facts_total = len(events) + len(kb_triples)
                     
                 except Exception as agent_err:
                     logger.warning(f"⚠️ Agent analysis failed, using workspace data: {agent_err}")
@@ -1653,9 +1672,13 @@ def create_app() -> "FastAPI":
                                 'traits': char_data.get('traits', []),
                                 'consistency': 'unknown'
                             })
+                    events = workspace_dict.get('events', [])
+                    kb_triples = workspace_dict.get('kb_triples', [])
+                    facts_verified = len(kb_triples)
+                    facts_total = len(events) + len(kb_triples)
             else:
-                # Fallback: use workspace data without LLM
-                logger.info("ℹ️ No LLM provider available, using workspace data")
+                # PRODUCTION: No perception agent available (shouldn't happen in production)
+                logger.warning("⚠️ No perception agent available - check agent initialization")
                 characters = workspace_dict.get('characters', {})
                 for char_name, char_data in characters.items():
                     if isinstance(char_data, dict):
