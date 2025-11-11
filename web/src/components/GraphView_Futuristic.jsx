@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { fetchWithAuth } from '../utils/api';
 
 const GraphView = ({ sessionId }) => {
   const [graphData, setGraphData] = useState(null);
@@ -13,17 +14,13 @@ const GraphView = ({ sessionId }) => {
 
   const fetchGraphData = useCallback(async () => {
     if (!sessionId) return;
-    
+        
     setLoading(true);
     setError(null);
-    
+        
     try {
-      // Use the new graph endpoint instead of snapshot
-      const response = await fetch(`${apiBase}/api/session/${sessionId}/graph`, {
-        credentials: 'include',
-      });
-      
-      if (!response.ok) {
+      // Use the new graph endpoint with authentication
+      const response = await fetchWithAuth(`${apiBase}/api/session/${sessionId}/graph`);      if (!response.ok) {
         throw new Error('Failed to fetch graph data');
       }
       
