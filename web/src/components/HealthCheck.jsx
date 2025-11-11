@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import axios from 'axios';
+import { fetchWithAuth } from '../utils/api';
 
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
 
@@ -16,59 +16,25 @@ const HealthCheck = () => {
     setError(null);
     
     try {
-      // Try detailed health endpoint first
-      try {
-        const response = await axios.get(`${API_BASE_URL}/api/health/detailed`, {
-          timeout: 10000,
-          headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json'
-          }
-        });
-        
-        if (response.data) {
-          setHealth({
-            ...response.data,
-            timestamp: new Date().toISOString()
-          });
-          return;
-        }
-      } catch (detailedError) {
-        console.warn('Detailed health check failed, trying basic endpoint:', detailedError.message);
-      }
-
-      // Fallback to basic health endpoint
-      const basicResponse = await axios.get(`${API_BASE_URL}/health`, {
-        timeout: 5000,
+      const response = await fetchWithAuth(`${API_BASE_URL}/api/health/detailed`, {
+        method: 'GET',
         headers: {
           'Accept': 'application/json',
           'Content-Type': 'application/json'
         }
       });
       
-      // Transform basic response to match expected format
-      const basicHealth = basicResponse.data;
-      setHealth({
-        status: basicHealth.status || 'healthy',
-        timestamp: new Date().toISOString(),
-        version: basicHealth.version || 'Unknown',
-        uptime: basicHealth.uptime || 0,
-        services: basicHealth.services || {},
-        database: basicHealth.database || { status: 'unknown' },
-        environment: {
-          mode: basicHealth.environment || 'production',
-          debug: basicHealth.debug || false
-        },
-        performance: basicHealth.performance || {},
-        warnings: basicHealth.warnings || []
-      });
+      if (response.ok) {
+        const data = await response.json();
+        setHealth(data);
+      } else {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
       
     } catch (err) {
       console.error('Health check failed:', err);
       setError(
-        err.code === 'ECONNREFUSED' 
-          ? 'Cannot connect to server. Please check if the backend is running.'
-          : err.message || 'Health check failed'
+        err.message || 'Health check failed. Check if backend is running.'
       );
       setHealth(null);
     } finally {
