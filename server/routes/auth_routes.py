@@ -1,6 +1,7 @@
 """Authentication routes for Google OAuth."""
 
 import logging
+import asyncio
 from typing import Dict, Optional
 
 from fastapi import APIRouter, HTTPException, Request, Response, Depends, status
@@ -57,6 +58,39 @@ logger = logging.getLogger(__name__)
 import time
 from datetime import datetime, timedelta
 _oauth_states: Dict[str, Dict] = {}
+
+# PRODUCTION FIX: Track processing auth codes to prevent race conditions
+_processing_codes: Dict[str, float] = {}  # code -> timestamp
+_processing_lock = asyncio.Lock()
+
+def is_code_being_processed(code: str) -> bool:
+    """Check if an authorization code is currently being processed"""
+    if code in _processing_codes:
+        # Check if it's still fresh (within 30 seconds)
+        age = time.time() - _processing_codes[code]
+        if age < 30:
+            return True
+        # Clean up stale entry
+        del _processing_codes[code]
+    return False
+
+def mark_code_processing(code: str):
+    """Mark an authorization code as being processed"""
+    _processing_codes[code] = time.time()
+
+def unmark_code_processing(code: str):
+    """Remove processing mark from an authorization code"""
+    _processing_codes.pop(code, None)
+
+def clean_stale_processing_codes():
+    """Clean up codes that have been processing for too long"""
+    current_time = time.time()
+    stale_codes = [
+        code for code, timestamp in _processing_codes.items()
+        if current_time - timestamp > 60  # 1 minute timeout
+    ]
+    for code in stale_codes:
+        del _processing_codes[code]
 
 async def ensure_oauth_state_index(mongo_client):
     """Ensure TTL index exists on oauth_states collection"""
@@ -122,7 +156,7 @@ def clean_expired_states():
     current_time = time.time()
     expired_keys = [
         key for key, value in _oauth_states.items()
-        if current_time - value.get("created_at", 0) > 300  # 5 minutes
+        if current_time - value.get("created_at", 0) > 600  # PRODUCTION FIX: 10 minutes (from 5)
     ]
     for key in expired_keys:
         del _oauth_states[key]
@@ -133,7 +167,7 @@ def is_state_valid(state: str) -> bool:
         return False
     
     created_at = _oauth_states[state].get("created_at", 0)
-    return time.time() - created_at < 300  # 5 minutes validity
+    return time.time() - created_at < 600  # PRODUCTION FIX: 10 minutes validity (from 5)
 
 
 def consume_state(state: str) -> dict:
@@ -183,7 +217,7 @@ async def google_login(request: Request, response: Response, mongo_client=Depend
         response.set_cookie(
             "oauth_state",
             state,
-            max_age=300,  # 5 minutes to match server-side expiration
+            max_age=600,  # PRODUCTION FIX: 10 minutes (extended from 5) for slower connections
             **cookie_flags
         )
 
@@ -215,108 +249,125 @@ async def google_callback(
     state: str,
     mongo_client=Depends(get_mongo_client),
 ):
-    """Handle Google OAuth callback."""
+    """Handle Google OAuth callback with race condition protection."""
     try:
-        # Clean up expired states first
-        clean_expired_states()
+        # PRODUCTION FIX: Check if this code is already being processed (race condition protection)
+        clean_stale_processing_codes()
         
-        # Validate state
-        stored_state = request.cookies.get("oauth_state")
+        async with _processing_lock:
+            if is_code_being_processed(code):
+                logger.warning(f"Authorization code already being processed from IP: {get_remote_address(request)}")
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="This authorization is already being processed. Please wait.",
+                )
+            mark_code_processing(code)
         
-        # Check if state matches cookie and is still valid
-        if not stored_state or stored_state != state:
-            logger.warning(
-                f"Invalid OAuth state from IP: {get_remote_address(request)}"
-            )
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid or expired authentication session. Please try logging in again.",
-            )
-        
-        # Check in MongoDB first (production-grade persistence)
-        state_data = await consume_state_from_db(state, mongo_client)
-        
-        # Fallback to in-memory state if MongoDB unavailable
-        if not state_data:
-            state_data = consume_state(state)
-        
-        if not state_data:
-            logger.warning(
-                f"OAuth state expired or not found for IP: {get_remote_address(request)}"
-            )
-            response.delete_cookie("oauth_state")
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Authentication session has expired. Please try logging in again.",
-            )
-        
-        # Clean up cookie
-        response.delete_cookie("oauth_state")
-
-        # Exchange code for tokens
         try:
-            tokens = await google_oauth.exchange_code_for_tokens(code, state)
-        except HTTPException as e:
-            logger.error(f"Token exchange failed for state {state}: {e.detail}")
-            # If it's an invalid_grant error, provide a more user-friendly message
-            if "invalid_grant" in str(e.detail).lower() or "authorization code" in str(e.detail).lower():
+            # Clean up expired states first
+            clean_expired_states()
+            
+            # Validate state
+            stored_state = request.cookies.get("oauth_state")
+            
+            # Check if state matches cookie and is still valid
+            if not stored_state or stored_state != state:
+                logger.warning(
+                    f"Invalid OAuth state from IP: {get_remote_address(request)}"
+                )
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Authorization code has expired or been used. Please try logging in again.",
+                    detail="Invalid or expired authentication session. Please try logging in again.",
                 )
-            elif "timeout" in str(e.detail).lower():
+            
+            # Check in MongoDB first (production-grade persistence)
+            state_data = await consume_state_from_db(state, mongo_client)
+            
+            # Fallback to in-memory state if MongoDB unavailable
+            if not state_data:
+                state_data = consume_state(state)
+            
+            if not state_data:
+                logger.warning(
+                    f"OAuth state expired or not found for IP: {get_remote_address(request)}"
+                )
+                response.delete_cookie("oauth_state")
                 raise HTTPException(
-                    status_code=status.HTTP_408_REQUEST_TIMEOUT,
-                    detail="Request timeout while connecting to Google. Please try again.",
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Authentication session has expired. Please try logging in again.",
                 )
-            raise e
+            
+            # Clean up cookie
+            response.delete_cookie("oauth_state")
 
-        # Get user info
-        user_info = await google_oauth.get_user_info(tokens.access_token)
+            # Exchange code for tokens
+            try:
+                tokens = await google_oauth.exchange_code_for_tokens(code, state)
+            except HTTPException as e:
+                logger.error(f"Token exchange failed for state {state}: {e.detail}")
+                # If it's an invalid_grant error, provide a more user-friendly message
+                if "invalid_grant" in str(e.detail).lower() or "authorization code" in str(e.detail).lower():
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Authorization code has expired or been used. Please try logging in again.",
+                    )
+                elif "timeout" in str(e.detail).lower():
+                    raise HTTPException(
+                        status_code=status.HTTP_408_REQUEST_TIMEOUT,
+                        detail="Request timeout while connecting to Google. Please try again.",
+                    )
+                raise e
 
-        # Save user to database
-        user_doc = {
-            "google_id": user_info.id,
-            "email": user_info.email,
-            "name": user_info.name,
-            "picture": user_info.picture,
-            "email_verified": user_info.email_verified,
-            "last_login": (
-                request.app.state.current_time
-                if hasattr(request.app.state, "current_time")
-                else None
-            ),
-            "refresh_token": tokens.refresh_token,
-        }
+            # Get user info
+            user_info = await google_oauth.get_user_info(tokens.access_token)
 
-        # Save user using MongoClient
-        if mongo_client and hasattr(mongo_client, 'save_user'):
-            # Wait for save to complete before setting cookie
-            await mongo_client.save_user(user_doc)
-            logger.info(f"User {user_doc.get('email', 'unknown')} saved to database")
-        else:
-            # Mock for tests - just log the action
-            logger.info(f"Mock save user: {user_doc.get('email', 'unknown')}")
-
-        # Create JWT token
-        jwt_token = jwt_manager.create_jwt_token(
-            {"id": user_info.id, "email": user_info.email, "name": user_info.name}
-        )
-
-        # Set secure cookie with environment-aware flags
-        set_auth_cookie(response, jwt_token)
-
-        logger.info(f"User {user_info.email} logged in successfully")
-
-        return {
-            "success": True,
-            "user": {
-                "id": user_info.id,
+            # Save user to database
+            user_doc = {
+                "google_id": user_info.id,
                 "email": user_info.email,
                 "name": user_info.name,
                 "picture": user_info.picture,
-            },
-        }
+                "email_verified": user_info.email_verified,
+                "last_login": (
+                    request.app.state.current_time
+                    if hasattr(request.app.state, "current_time")
+                    else None
+                ),
+                "refresh_token": tokens.refresh_token,
+            }
+
+            # Save user using MongoClient
+            if mongo_client and hasattr(mongo_client, 'save_user'):
+                # Wait for save to complete before setting cookie
+                await mongo_client.save_user(user_doc)
+                logger.info(f"User {user_doc.get('email', 'unknown')} saved to database")
+            else:
+                # Mock for tests - just log the action
+                logger.info(f"Mock save user: {user_doc.get('email', 'unknown')}")
+
+            # Create JWT token
+            jwt_token = jwt_manager.create_jwt_token(
+                {"id": user_info.id, "email": user_info.email, "name": user_info.name}
+            )
+
+            # Set secure cookie with environment-aware flags
+            set_auth_cookie(response, jwt_token)
+
+            logger.info(f"User {user_info.email} logged in successfully")
+
+            return {
+                "success": True,
+                "user": {
+                    "id": user_info.id,
+                    "email": user_info.email,
+                    "name": user_info.name,
+                    "picture": user_info.picture,
+                },
+            }
+        
+        finally:
+            # PRODUCTION FIX: Always unmark the code as being processed
+            unmark_code_processing(code)
 
     except HTTPException:
         raise
