@@ -79,7 +79,7 @@ class Workspace:
         }
 
     async def initialize(self) -> None:
-        """Initialize database connections"""
+        """Initialize database connections with production-ready diagnostics"""
         try:
             # Handle both old-style dict config and new-style object config
             mongodb_url = None
@@ -93,16 +93,45 @@ class Workspace:
                 mongodb_url = self.config.get('MONGODB_URL') or self.config.get('mongodb_url')
 
             if MOTOR_AVAILABLE and mongodb_url:
-                self.mongo_client = AsyncIOMotorClient(mongodb_url)
-                # Test connection
-                await self.mongo_client.admin.command("ping")
-                logger.info("MongoDB connection established")
+                try:
+                    self.mongo_client = AsyncIOMotorClient(
+                        mongodb_url,
+                        serverSelectionTimeoutMS=5000,  # 5 second timeout
+                        connectTimeoutMS=5000,
+                        maxPoolSize=10
+                    )
+                    # Test connection with timeout
+                    await asyncio.wait_for(
+                        self.mongo_client.admin.command("ping"),
+                        timeout=5.0
+                    )
+                    logger.info("✅ MongoDB connection established and verified")
+                    
+                    # Log database info for debugging
+                    db_name = self.config.mongodb_database if hasattr(self.config, 'mongodb_database') else 'human_ai_co_create'
+                    logger.info(f"📊 Using MongoDB database: {db_name}")
+                    
+                except asyncio.TimeoutError:
+                    logger.error("❌ MongoDB connection timeout - falling back to JSON only")
+                    logger.error("   Check if MongoDB is running: docker ps | grep mongo")
+                    self.mongo_client = None
+                except Exception as mongo_err:
+                    logger.error(f"❌ MongoDB connection failed: {mongo_err}")
+                    logger.error(f"   Connection string: {mongodb_url[:20]}...")
+                    logger.error("   Falling back to JSON-only storage")
+                    self.mongo_client = None
+            else:
+                if not MOTOR_AVAILABLE:
+                    logger.warning("⚠️  motor package not available - install with: pip install motor")
+                if not mongodb_url:
+                    logger.warning("⚠️  MongoDB URL not configured in server config")
+                logger.info("Using JSON-only storage mode")
 
         except Exception as e:
             logger.warning(f"Database connection failed, using JSON fallback only: {e}")
 
     async def load(self) -> bool:
-        """Load workspace from MongoDB or JSON fallback"""
+        """Load workspace from MongoDB or JSON fallback with detailed logging"""
         try:
             # Try MongoDB first
             if self.mongo_client:
@@ -113,33 +142,43 @@ class Workspace:
                 elif isinstance(self.config, dict):
                     database_name = self.config.get('mongodb_database', 'human_ai_co_create')
                 
-                db = self.mongo_client[database_name]
-                collection = db.stories
+                try:
+                    db = self.mongo_client[database_name]
+                    collection = db.stories
 
-                doc = await collection.find_one({"session_id": self.session_id})
-                if doc:
-                    doc.pop("_id", None)  # Remove MongoDB _id
-                    # Enforce enum validation for suggestion_mode
-                    if "policy" in doc and "suggestion_mode" in doc["policy"]:
-                        doc["policy"]["suggestion_mode"] = coerce_suggestion_mode(doc["policy"]["suggestion_mode"]).value
-                    self.data = doc
-                    logger.info(f"Workspace loaded from MongoDB: {self.session_id}")
-                    return True
+                    doc = await asyncio.wait_for(
+                        collection.find_one({"session_id": self.session_id}),
+                        timeout=5.0
+                    )
+                    if doc:
+                        doc.pop("_id", None)  # Remove MongoDB _id
+                        # Enforce enum validation for suggestion_mode
+                        if "policy" in doc and "suggestion_mode" in doc["policy"]:
+                            doc["policy"]["suggestion_mode"] = coerce_suggestion_mode(doc["policy"]["suggestion_mode"]).value
+                        self.data = doc
+                        logger.info(f"✅ Workspace loaded from MongoDB: {self.session_id}")
+                        return True
+                    else:
+                        logger.debug(f"ℹ️  Session {self.session_id} not found in MongoDB, checking JSON...")
+                except asyncio.TimeoutError:
+                    logger.warning(f"⚠️  MongoDB query timeout for {self.session_id}, trying JSON fallback")
+                except Exception as mongo_err:
+                    logger.warning(f"⚠️  MongoDB query failed: {mongo_err}, trying JSON fallback")
 
             # Fallback to JSON
             json_path = self._get_json_path()
             if json_path.exists():
                 with open(json_path, "r", encoding="utf-8") as f:
                     self.data = json.load(f)
-                logger.info(f"Workspace loaded from JSON fallback: {self.session_id}")
+                logger.info(f"📁 Workspace loaded from JSON fallback: {self.session_id}")
                 return True
 
             # No existing workspace found
-            logger.info(f"New workspace created: {self.session_id}")
+            logger.info(f"🆕 New workspace created: {self.session_id}")
             return False
 
         except Exception as e:
-            logger.error(f"Failed to load workspace {self.session_id}: {e}")
+            logger.error(f"❌ Failed to load workspace {self.session_id}: {e}")
             return False
 
     async def save(self, force: bool = False) -> None:
@@ -169,13 +208,21 @@ class Workspace:
                 elif isinstance(self.config, dict):
                     database_name = self.config.get('mongodb_database', 'human_ai_co_create')
                 
-                db = self.mongo_client[database_name]
-                collection = db.stories
+                try:
+                    db = self.mongo_client[database_name]
+                    collection = db.stories
 
-                await collection.update_one(
-                    {"session_id": self.session_id}, {"$set": self.data}, upsert=True
-                )
-                logger.debug(f"Workspace saved to MongoDB: {self.session_id}")
+                    await asyncio.wait_for(
+                        collection.update_one(
+                            {"session_id": self.session_id}, {"$set": self.data}, upsert=True
+                        ),
+                        timeout=5.0
+                    )
+                    logger.debug(f"💾 Workspace saved to MongoDB: {self.session_id}")
+                except asyncio.TimeoutError:
+                    logger.warning(f"⚠️  MongoDB save timeout for {self.session_id}, saved to JSON only")
+                except Exception as mongo_err:
+                    logger.warning(f"⚠️  MongoDB save failed: {mongo_err}, saved to JSON only")
 
             # Always save JSON fallback
             await self._save_json_snapshot()
@@ -183,9 +230,12 @@ class Workspace:
             self.last_save_time = current_time
 
         except Exception as e:
-            logger.error(f"Failed to save workspace {self.session_id}: {e}")
+            logger.error(f"❌ Failed to save workspace {self.session_id}: {e}")
             # Ensure JSON fallback even if MongoDB fails
-            await self._save_json_snapshot()
+            try:
+                await self._save_json_snapshot()
+            except Exception as json_err:
+                logger.error(f"❌ JSON fallback also failed: {json_err}")
 
     async def _save_json_snapshot(self) -> None:
         """Save JSON snapshot to local fallback"""

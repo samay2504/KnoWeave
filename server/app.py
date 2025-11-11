@@ -1752,6 +1752,112 @@ def create_app() -> "FastAPI":
                 "agents": len(agents) > 0
             }
         }
+    
+    @app.get("/api/health/detailed")
+    async def detailed_health_check():
+        """
+        Comprehensive health check with database and service status
+        Production-ready endpoint for monitoring and debugging
+        """
+        import time
+        start_time = time.time()
+        
+        # Check MongoDB
+        mongo_status = "unknown"
+        mongo_message = ""
+        try:
+            if session_manager:
+                # Try to get a workspace to test MongoDB
+                test_workspace = session_manager.workspaces.get(list(session_manager.workspaces.keys())[0]) if session_manager.workspaces else None
+                if test_workspace and test_workspace.mongo_client:
+                    try:
+                        await asyncio.wait_for(
+                            test_workspace.mongo_client.admin.command("ping"),
+                            timeout=2.0
+                        )
+                        mongo_status = "connected"
+                        mongo_message = "MongoDB operational"
+                    except asyncio.TimeoutError:
+                        mongo_status = "timeout"
+                        mongo_message = "MongoDB connection timeout"
+                    except Exception as e:
+                        mongo_status = "error"
+                        mongo_message = f"MongoDB error: {str(e)[:100]}"
+                else:
+                    mongo_status = "not_configured"
+                    mongo_message = "MongoDB client not initialized"
+        except Exception as e:
+            mongo_status = "error"
+            mongo_message = f"Health check error: {str(e)[:100]}"
+        
+        # Check LLM Provider
+        llm_status = "unknown"
+        llm_message = ""
+        try:
+            if agents.get("perception"):
+                perception = agents["perception"]
+                if hasattr(perception, 'llm_provider') and perception.llm_provider:
+                    llm_status = "available"
+                    llm_message = "LLM provider initialized"
+                else:
+                    llm_status = "not_configured"
+                    llm_message = "LLM provider not configured"
+        except Exception as e:
+            llm_status = "error"
+            llm_message = f"LLM check error: {str(e)[:100]}"
+        
+        # Check ArangoDB (if configured)
+        arango_status = "not_configured"
+        arango_message = "ArangoDB not in use (using JSON fallback)"
+        
+        # JSON fallback is always available
+        json_fallback_status = "ok"
+        json_fallback_message = "JSON file storage available"
+        
+        # Overall system status
+        overall_status = "healthy" if mongo_status in ["connected", "not_configured"] else "degraded"
+        
+        response_time = (time.time() - start_time) * 1000  # Convert to ms
+        
+        return {
+            "status": overall_status,
+            "timestamp": datetime.now().isoformat(),
+            "uptime": time.time(),
+            "version": "1.0.0",
+            "response_time_ms": round(response_time, 2),
+            "services": {
+                "mongo": {
+                    "status": mongo_status,
+                    "message": mongo_message,
+                    "last_checked": datetime.now().isoformat()
+                },
+                "arango": {
+                    "status": arango_status,
+                    "message": arango_message,
+                    "last_checked": datetime.now().isoformat()
+                },
+                "llm": {
+                    "status": llm_status,
+                    "message": llm_message,
+                    "last_checked": datetime.now().isoformat()
+                },
+                "json_fallback": {
+                    "status": json_fallback_status,
+                    "message": json_fallback_message,
+                    "last_checked": datetime.now().isoformat()
+                }
+            },
+            "agents": {
+                "session_manager": session_manager is not None,
+                "perception": "perception" in agents,
+                "planner": "planner" in agents,
+                "graph_manager": "graph_manager" in agents,
+                "verifier": "verifier" in agents,
+                "evaluator": "evaluator" in agents,
+                "total_count": len(agents)
+            },
+            "active_sessions": len(session_manager.workspaces) if session_manager else 0
+        }
 
     @app.options("/api/health")
     async def api_health_options():

@@ -4,7 +4,7 @@ import Navbar from './components/Navbar';
 import AuthGoogle from './components/AuthGoogle';
 import Callback from './components/Callback';
 import GraphView from './components/GraphView';
-import HealthCheck from './components/HealthCheck';
+import HealthCheck from './components/HealthCheck_Production';
 import ModeSelector from './components/ModeSelector';
 import DomainSelector from './components/DomainSelector';
 import { useAIMode, useSession } from './hooks/useAIMode';

@@ -1,0 +1,7 @@
+{"timestamp": "2025-11-11T18:33:03.837852", "session_id": "session_6f93d8a6c255", "agent_name": "perception", "topic": "story", "topic_family": "narrative", "mode": "on_demand", "few_shot_count": 1, "prompt_length": 4651}
+{"timestamp": "2025-11-11T18:33:03.839846", "session_id": "session_6f93d8a6c255", "agent_name": "graph_manager", "topic": "story", "topic_family": "narrative", "mode": "on_demand", "few_shot_count": 0, "prompt_length": 2182}
+{"timestamp": "2025-11-11T18:33:09.469451", "session_id": "session_6f93d8a6c255", "agent_name": "planner", "topic": "story", "topic_family": "narrative", "mode": "on_demand", "few_shot_count": 0, "prompt_length": 3198}
+{"timestamp": "2025-11-11T18:33:25.216959", "session_id": "session_6f93d8a6c255", "agent_name": "verifier", "topic": "story", "topic_family": "narrative", "mode": "on_demand", "few_shot_count": 0, "prompt_length": 4134}
+{"timestamp": "2025-11-11T18:33:31.048626", "session_id": "session_6f93d8a6c255", "agent_name": "verifier", "topic": "story", "topic_family": "narrative", "mode": "on_demand", "few_shot_count": 0, "prompt_length": 4253}
+{"timestamp": "2025-11-11T18:33:38.741712", "session_id": "session_6f93d8a6c255", "agent_name": "verifier", "topic": "story", "topic_family": "narrative", "mode": "on_demand", "few_shot_count": 0, "prompt_length": 4225}
+{"timestamp": "2025-11-11T18:33:46.059471", "session_id": "session_6f93d8a6c255", "agent_name": "evaluator", "topic": "story", "topic_family": "narrative", "mode": "on_demand", "few_shot_count": 0, "prompt_length": 7685}

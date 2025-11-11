@@ -243,6 +243,51 @@ class GraphManagerAgent:
         )
         return result
 
+    async def get_graph_structure(self, session_id: str) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+        """
+        Production-ready method to get graph structure for API consumption
+        Returns nodes and edges formatted for frontend visualization
+        
+        This method is called by the /api/session/{id}/graph endpoint
+        """
+        nodes = []
+        edges = []
+        
+        # Convert internal nodes to API format
+        for node_id, node in self.nodes.items():
+            node_dict = {
+                "id": node.id,
+                "type": node.node_type,
+                "title": node.content[:50] if len(node.content) > 50 else node.content,
+                "text": node.content,
+                "confidence": node.importance,
+                "metadata": node.metadata or {},
+                "created_at": node.created_at.isoformat() if hasattr(node.created_at, 'isoformat') else str(node.created_at)
+            }
+            
+            # Add actor if it's a character or event node
+            if node.node_type == "character":
+                node_dict["actor"] = node.content
+            elif "actor" in node.metadata:
+                node_dict["actor"] = node.metadata["actor"]
+                
+            nodes.append(node_dict)
+        
+        # Convert internal edges to API format
+        for edge_id, edge in self.edges.items():
+            edge_dict = {
+                "id": edge.id,
+                "source": edge.source_id,
+                "target": edge.target_id,
+                "type": edge.relation_type,
+                "confidence": edge.confidence,
+                "metadata": edge.metadata or {}
+            }
+            edges.append(edge_dict)
+        
+        logger.info(f"Returning graph structure: {len(nodes)} nodes, {len(edges)} edges for session {session_id}")
+        return nodes, edges
+
     async def _load_graph(self, graph_data: Dict[str, Any]) -> None:
         """Load existing graph from workspace data"""
         # Load nodes
