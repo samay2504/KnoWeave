@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { fetchWithAuth } from '../utils/api';
 
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
@@ -20,8 +20,8 @@ const DomainSelector = ({
   const [isDetecting, setIsDetecting] = useState(false);
   const [detectionResult, setDetectionResult] = useState(null);
 
-  // Domain configurations matching backend TOPIC_DOMAINS
-  const domains = {
+  // Domain configurations matching backend TOPIC_DOMAINS (memoized to prevent re-creation)
+  const domains = useMemo(() => ({
     story: {
       name: 'Creative Writing',
       description: 'Stories, narratives, and creative content',
@@ -76,7 +76,7 @@ const DomainSelector = ({
       borderColor: 'border-pink-500/30',
       preferredMode: 'exploratory'
     }
-  };
+  }), []); // Empty dependency array since this config never changes
 
   const currentConfig = domains[selectedDomain] || domains.story;
 
@@ -84,49 +84,8 @@ const DomainSelector = ({
     setSelectedDomain(currentDomain);
   }, [currentDomain]);
 
-  // AI-powered domain detection using PerceptionAgent
-  const detectDomain = async () => {
-    if (!userInput || userInput.trim().length < 20) {
-      console.log('Need at least 20 characters for domain detection');
-      return;
-    }
-
-    setIsDetecting(true);
-    try {
-      const response = await fetchWithAuth(`${API_BASE_URL}/api/perception/detect-domain`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: userInput })
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        setDetectionResult(result);
-        
-        // Auto-select detected domain if confidence is high
-        if (result.domain && result.confidence > 0.6 && autoDetect) {
-          handleDomainSelect(result.domain, true);
-        }
-      }
-    } catch (error) {
-      console.error('Domain detection failed:', error);
-    } finally {
-      setIsDetecting(false);
-    }
-  };
-
-  // Trigger detection when user input changes (debounced)
-  useEffect(() => {
-    if (!autoDetect || !userInput || userInput.length < 20) return;
-
-    const timeout = setTimeout(() => {
-      detectDomain();
-    }, 2000); // Wait 2 seconds after user stops typing
-
-    return () => clearTimeout(timeout);
-  }, [userInput, autoDetect]);
-
-  const handleDomainSelect = (domain, isAIDetected = false) => {
+  // Memoized domain selection handler to avoid infinite re-renders
+  const handleDomainSelect = useCallback((domain, isAIDetected = false) => {
     setSelectedDomain(domain);
     setIsOpen(false);
     
@@ -137,7 +96,50 @@ const DomainSelector = ({
         confidence: detectionResult?.confidence
       });
     }
-  };
+  }, [onDomainChange, detectionResult, domains]);
+
+  // AI-powered domain detection using PerceptionAgent (debounced)
+  useEffect(() => {
+    if (!autoDetect || !userInput || userInput.trim().length < 20) return;
+
+    let mounted = true;
+    const timeout = setTimeout(() => {
+      const detectDomain = async () => {
+        if (!mounted) return;
+        setIsDetecting(true);
+        try {
+          const response = await fetchWithAuth(`${API_BASE_URL}/api/perception/detect-domain`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: userInput })
+          });
+
+          if (!mounted) return;
+          if (response.ok) {
+            const result = await response.json();
+            if (!mounted) return;
+            setDetectionResult(result);
+
+            // Auto-select detected domain if confidence is high
+            if (result.domain && result.confidence > 0.6 && autoDetect) {
+              handleDomainSelect(result.domain, true);
+            }
+          }
+        } catch (error) {
+          if (mounted) console.error('Domain detection failed:', error);
+        } finally {
+          if (mounted) setIsDetecting(false);
+        }
+      };
+
+      detectDomain();
+    }, 2000); // Wait 2 seconds after user stops typing
+
+    return () => {
+      mounted = false;
+      clearTimeout(timeout);
+    };
+  }, [userInput, autoDetect, handleDomainSelect]);
 
   return (
     <div className={`relative ${className}`}>
