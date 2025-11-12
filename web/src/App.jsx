@@ -274,27 +274,42 @@ const Dashboard = ({ user }) => {
         if (projectionsList.length > 0) {
           console.log(`✅ Suggestions received: ${projectionsList.length} options`);
           
-          // Intelligently format projections for display
+          // PRODUCTION FIX: Clean markdown formatting - remove **, *, -, etc.
+          const cleanMarkdown = (text) => {
+            return text
+              .replace(/\*\*(.*?)\*\*/g, '$1')  // Remove **bold**
+              .replace(/\*(.*?)\*/g, '$1')      // Remove *italic*
+              .replace(/^[-*+]\s/gm, '')        // Remove list markers at line start
+              .replace(/^#+\s/gm, '')           // Remove headers
+              .replace(/`(.*?)`/g, '$1')        // Remove `code`
+              .replace(/\[(.*?)\]\(.*?\)/g, '$1') // Remove [links](url)
+              .trim();
+          };
+          
+          // Intelligently format projections with clean output
           const projectionsText = projectionsList
             .map((p, i) => {
               // Extract content intelligently
-              let title = p.title || `Option ${i + 1}`;
-              let content = p.paragraph || p.content || p.text || p.suggestion || '';
+              let title = cleanMarkdown(p.title || `Option ${i + 1}`);
+              let content = cleanMarkdown(
+                p.paragraph || p.content || p.text || p.suggestion || ''
+              );
               
               // If content is empty, try to extract from nested structure
               if (!content && typeof p === 'object') {
-                content = p.content?.paragraph || p.content?.text || '';
+                content = cleanMarkdown(
+                  p.content?.paragraph || p.content?.text || ''
+                );
               }
               
-              // Format with title and content
+              // Pretty print without markdown
               if (content) {
-                return `**${title}**\n${content}`;
+                return `${title}\n\n${content}`;
               } else {
-                // Fallback: just show title if no content
-                return `**${title}**`;
+                return title;
               }
             })
-            .join('\n\n---\n\n');  // Separate with divider
+            .join('\n\n━━━━━━━━━━━━━━━━━━━━━━\n\n');  // Clean divider
           
           setGeneratedPrompt(`✨ AI Suggestions:\n\n${projectionsText}`);
         } else {
@@ -470,8 +485,8 @@ const Dashboard = ({ user }) => {
                   currentDomain={currentDomain}
                   onDomainChange={handleDomainChange}
                   disabled={modeLoading}
-                  showDescription={true}
-                  showExamples={false}
+                  userInput={storyContent}
+                  autoDetect={isDomainDetectionEnabled}
                   className="cyber-input"
                 />
               </div>
@@ -482,14 +497,14 @@ const Dashboard = ({ user }) => {
                   currentMode={currentMode}
                   onModeChange={handleModeChange}
                   disabled={modeLoading}
-                  showDescription={true}
+                  currentDomain={currentDomain}
                   className="cyber-input"
                 />
               </div>
 
               {/* Domain Detection Toggle */}
               <div className="mb-4">
-                <label className="flex items-center space-x-3 text-sm text-gray-600">
+                <label className="flex items-center space-x-3 text-sm text-gray-400">
                   <input
                     type="checkbox"
                     checked={isDomainDetectionEnabled}

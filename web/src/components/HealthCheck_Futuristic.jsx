@@ -10,6 +10,7 @@ const HealthCheck = () => {
   const [expanded, setExpanded] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [refreshInterval] = useState(30000);
+  const [lastChecked, setLastChecked] = useState(null);
 
   const checkHealth = useCallback(async (showLoading = false) => {
     if (showLoading) setLoading(true);
@@ -27,6 +28,7 @@ const HealthCheck = () => {
       if (response.ok) {
         const data = await response.json();
         setHealth(data);
+        setLastChecked(new Date());
       } else {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
@@ -108,17 +110,48 @@ const HealthCheck = () => {
   };
 
   const formatUptime = (seconds) => {
-    if (!seconds) return 'Unknown';
+    if (!seconds || seconds === 0) return 'Unknown';
     const hours = Math.floor(seconds / 3600);
     const minutes = Math.floor((seconds % 3600) / 60);
-    return `${hours}h ${minutes}m`;
+    const secs = Math.floor(seconds % 60);
+    
+    if (hours > 0) {
+      return `${hours}h ${minutes}m`;
+    } else if (minutes > 0) {
+      return `${minutes}m ${secs}s`;
+    } else {
+      return `${secs}s`;
+    }
+  };
+
+  const formatTime = (date) => {
+    if (!date) return 'Unknown';
+    
+    try {
+      // Convert to Date object if it's a string or timestamp
+      const dateObj = date instanceof Date ? date : new Date(date);
+      
+      // Check if valid date
+      if (isNaN(dateObj.getTime())) return 'Invalid time';
+      
+      // Format time: HH:MM:SS AM/PM
+      return dateObj.toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true
+      });
+    } catch (e) {
+      console.error('Error formatting time:', e);
+      return 'Time error';
+    }
   };
 
   const getOverallStatus = () => {
     if (!health) return 'unknown';
     if (health.status === 'healthy' || health.status === 'up') return 'healthy';
     if (health.warnings && health.warnings.length > 0) return 'degraded';
-    return health.status;
+    return health.status || 'unknown';
   };
 
   const overallStatus = getOverallStatus();
@@ -193,7 +226,7 @@ const HealthCheck = () => {
                 <div>
                   <h4 className="font-semibold text-white capitalize">{overallStatus}</h4>
                   <p className="text-xs cyber-subheading">
-                    Last checked: {new Date(health.timestamp).toLocaleTimeString()}
+                    Last checked: {formatTime(lastChecked)}
                   </p>
                 </div>
               </div>
