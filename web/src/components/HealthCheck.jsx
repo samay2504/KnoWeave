@@ -16,6 +16,9 @@ const HealthCheck = () => {
     if (showLoading) setLoading(true);
     setError(null);
     
+    // PRODUCTION FIX: Get actual browser time (not backend timestamp)
+    const currentBrowserTime = new Date();
+    
     try {
       const response = await fetchWithAuth(`${API_BASE_URL}/api/health/detailed`, {
         method: 'GET',
@@ -28,7 +31,8 @@ const HealthCheck = () => {
       if (response.ok) {
         const data = await response.json();
         setHealth(data);
-        setLastChecked(new Date());
+        // Use browser's current time, not backend timestamp
+        setLastChecked(currentBrowserTime);
       } else {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
