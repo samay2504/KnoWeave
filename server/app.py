@@ -1847,7 +1847,10 @@ def create_app() -> "FastAPI":
             from utils.schemas import MetadataSchema
             workspace.metadata = MetadataSchema(**metadata_dict)
             
-            await session_manager.save_workspace(session_id, workspace)
+            # PRODUCTION FIX: Use update_session instead of save_workspace
+            success = await session_manager.update_session(session_id, workspace)
+            if not success:
+                raise HTTPException(status_code=500, detail="Failed to update session")
             
             detection_method = f"AI-detected (confidence: {confidence:.2f})" if is_ai_detected and confidence else "manual"
             logger.info(f"📋 Session {session_id} domain updated to '{domain}' ({detection_method})")
