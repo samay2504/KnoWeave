@@ -530,16 +530,16 @@ def create_app() -> "FastAPI":
             perception_agent = agents["perception"]
             if hasattr(perception_agent, 'detect_domain_and_role_llm'):
                 result = await perception_agent.detect_domain_and_role_llm(text)
-                logger.info(f"✅ Domain detected via LLM: {result.get('topic_family')}")
+                logger.info(f"✅ Domain detected via LLM: {result.get('topic_family')} (confidence: {result.get('confidence', 0):.2f})")
             elif hasattr(perception_agent, 'detect_domain_and_role'):
                 result = perception_agent.detect_domain_and_role(text)
-                logger.info(f"ℹ️  Domain detected via patterns: {result.get('topic_family')}")
+                logger.info(f"ℹ️  Domain detected via patterns: {result.get('topic_family')} (confidence: {result.get('confidence', 0):.2f})")
             else:
                 # Fallback: basic domain detection
                 result = {
-                    "domain": "general",
+                    "topic_family": "story",
                     "confidence": 0.5,
-                    "suggested_role": "general_assistant",
+                    "suggested_role": "creative_assistant",
                     "detected_at": datetime.now().isoformat()
                 }
                 logger.warning("Using fallback domain detection")
@@ -551,7 +551,7 @@ def create_app() -> "FastAPI":
             }
             
         except Exception as e:
-            logger.error(f"Domain detection failed: {e}")
+            logger.error(f"❌ Domain detection failed: {e}")
             raise HTTPException(status_code=500, detail=str(e))
 
     @app.post("/api/agents/planner/generate")
@@ -1759,6 +1759,53 @@ def create_app() -> "FastAPI":
 
         except Exception as e:
             logger.error(f"❌ Failed to get analytics for session {session_id}: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @app.put("/api/session/{session_id}/domain")
+    async def update_session_domain(session_id: str, request: Request):
+        """Update content domain for session (manual or AI-detected)"""
+        try:
+            if not session_manager:
+                raise HTTPException(status_code=500, detail="Session manager not initialized")
+            
+            data = await request.json()
+            domain = data.get("domain")
+            is_ai_detected = data.get("isAIDetected", False)
+            confidence = data.get("confidence")
+            
+            if not domain:
+                raise HTTPException(status_code=400, detail="domain required")
+            
+            workspace = await session_manager.load_workspace(session_id)
+            if not workspace:
+                raise HTTPException(status_code=404, detail="Session not found")
+            
+            # Update workspace metadata
+            if not hasattr(workspace, 'metadata'):
+                workspace.metadata = {}
+            
+            workspace.metadata['content_domain'] = domain
+            workspace.metadata['domain_detection'] = {
+                'method': 'ai' if is_ai_detected else 'manual',
+                'confidence': confidence,
+                'updated_at': datetime.now().isoformat()
+            }
+            
+            await session_manager.save_workspace(session_id, workspace)
+            
+            detection_method = f"AI-detected (confidence: {confidence:.2f})" if is_ai_detected else "manual"
+            logger.info(f"📋 Session {session_id} domain updated to '{domain}' ({detection_method})")
+            
+            return {
+                "status": "success",
+                "session_id": session_id,
+                "domain": domain,
+                "detection_method": detection_method,
+                "timestamp": datetime.now().isoformat()
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to update domain for session {session_id}: {e}")
             raise HTTPException(status_code=500, detail=str(e))
 
     @app.get("/api/session/{session_id}/graph")

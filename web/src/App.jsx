@@ -159,12 +159,29 @@ const Dashboard = ({ user }) => {
     try {
       setCurrentDomain(newDomain);
       
+      // Notify backend of domain change for session tracking
+      if (sessionId) {
+        try {
+          await fetchWithAuth(`${API_BASE_URL}/api/session/${sessionId}/domain`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+              domain: newDomain,
+              isAIDetected: domainConfig?.isAIDetected || false,
+              confidence: domainConfig?.confidence
+            })
+          });
+        } catch (backendErr) {
+          console.warn('Backend domain update failed (non-critical):', backendErr);
+        }
+      }
+      
       // Auto-switch to preferred mode for domain
       if (domainConfig && domainConfig.preferredMode && domainConfig.preferredMode !== currentMode) {
         await updateMode(domainConfig.preferredMode);
       }
       
-      console.log(`Domain changed to: ${newDomain}`);
+      console.log(`Domain changed to: ${newDomain}`, domainConfig?.isAIDetected ? '(AI detected)' : '(manual)');
     } catch (err) {
       console.error('Failed to update domain:', err);
     }

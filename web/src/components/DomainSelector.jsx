@@ -108,7 +108,7 @@ const DomainSelector = ({
         if (!mounted) return;
         setIsDetecting(true);
         try {
-          const response = await fetchWithAuth(`${API_BASE_URL}/api/perception/detect-domain`, {
+          const response = await fetchWithAuth(`${API_BASE_URL}/api/agents/perception/detect-domain`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ text: userInput })
@@ -116,8 +116,17 @@ const DomainSelector = ({
 
           if (!mounted) return;
           if (response.ok) {
-            const result = await response.json();
+            const data = await response.json();
             if (!mounted) return;
+            
+            // Extract domain info from backend response structure
+            const domainInfo = data.domain_info || data;
+            const result = {
+              domain: domainInfo.topic_family || domainInfo.domain,
+              confidence: domainInfo.confidence || 0,
+              role: domainInfo.suggested_role
+            };
+            
             setDetectionResult(result);
 
             // Auto-select detected domain if confidence is high
