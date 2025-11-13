@@ -112,6 +112,7 @@ from utils.schemas import (
     BacktrackRequest,
     BacktrackResponse,
     SnapshotResponse,
+    SaveSessionRequest,
 )
 
 # Initialize logging
@@ -566,6 +567,9 @@ def create_app() -> "FastAPI":
             perception_agent = agents["perception"]
             if hasattr(perception_agent, 'detect_domain_and_role_llm'):
                 result = await perception_agent.detect_domain_and_role_llm(text)
+                # PRODUCTION FIX: Normalize confidence key - perception returns domain_confidence
+                if 'domain_confidence' in result and 'confidence' not in result:
+                    result['confidence'] = result['domain_confidence']
                 logger.info(f"✅ Domain detected via LLM: {result.get('topic_family')} (confidence: {result.get('confidence', 0.0):.2f})")
             elif hasattr(perception_agent, 'detect_domain_and_role'):
                 result = perception_agent.detect_domain_and_role(text)
@@ -1298,13 +1302,20 @@ def create_app() -> "FastAPI":
             topic = request.options.get("topic", "general")
             topic_descriptor = request.options.get("context", "Content generation and analysis")
             
-            # PRODUCTION FIX: Extract domain metadata once for all agents
+            # PRODUCTION FIX: Use current domain from request, not old workspace metadata
+            # Frontend sends updated domain via request.options.topic after domain detection
+            content_domain = topic if topic != "general" else "story"
+            
+            # Also update workspace metadata to persist the domain change
             workspace_dict = workspace.dict() if hasattr(workspace, 'dict') else workspace
             workspace_metadata = workspace_dict.get("metadata", {})
             if hasattr(workspace_metadata, 'dict'):
                 workspace_metadata = workspace_metadata.dict()
             
-            content_domain = workspace_metadata.get("content_domain", workspace_dict.get("topic", "story"))
+            # Store the current domain in metadata for future requests
+            if isinstance(workspace_metadata, dict):
+                workspace_metadata["content_domain"] = content_domain
+            
             topic_family = _get_topic_family_from_domain(content_domain)
             topic_role = _get_topic_role(topic_family)
             topic_goal = _get_topic_goal(topic_family)
@@ -1695,6 +1706,64 @@ def create_app() -> "FastAPI":
         except Exception as e:
             logger.error(f"Failed to get snapshot: {e}")
             raise HTTPException(status_code=500, detail=str(e))
+
+    @app.post("/api/session/{session_id}/save")
+    async def save_session_content(session_id: str, request: SaveSessionRequest):
+        """Save current session content and state"""
+        try:
+            if not session_manager:
+                raise HTTPException(
+                    status_code=500, detail="Session manager not initialized"
+                )
+
+            # Load current workspace
+            workspace = await session_manager.load_workspace(session_id)
+            if not workspace:
+                raise HTTPException(status_code=404, detail="Session not found")
+
+            # Update workspace with new content
+            workspace_dict = workspace.model_dump() if hasattr(workspace, 'model_dump') else workspace
+            
+            # Update content in workspace
+            workspace_dict["content"] = request.content
+            workspace_dict["last_modified"] = datetime.utcnow()
+            
+            # Update domain if provided
+            if request.domain:
+                if "metadata" not in workspace_dict:
+                    workspace_dict["metadata"] = {}
+                workspace_dict["metadata"]["content_domain"] = request.domain
+            
+            # Update additional metadata if provided
+            if request.metadata:
+                if "metadata" not in workspace_dict:
+                    workspace_dict["metadata"] = {}
+                workspace_dict["metadata"].update(request.metadata)
+            
+            # Save workspace using session manager
+            await session_manager.update_session(session_id, workspace_dict)
+            
+            # Force save to disk/database
+            await session_manager.save_workspace(session_id, force=True)
+            
+            logger.info(f"💾 Saved session {session_id} - content length: {len(request.content)} chars")
+            
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "status": "success",
+                    "message": f"Session saved successfully",
+                    "session_id": session_id,
+                    "content_length": len(request.content),
+                    "timestamp": datetime.utcnow().isoformat()
+                }
+            )
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to save session: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to save session: {str(e)}")
 
     @app.get("/api/session/{session_id}/analytics")
     async def get_session_analytics(session_id: str):

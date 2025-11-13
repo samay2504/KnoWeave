@@ -200,6 +200,63 @@ const Dashboard = ({ user }) => {
   };
 
   /**
+   * Handle save - persist current content to session
+   */
+  const handleSave = async () => {
+    if (!sessionId && !currentSessionId) {
+      console.warn('Cannot save: No active session');
+      setSessionError('⚠️ Session not initialized. Please wait or refresh the page.');
+      return;
+    }
+
+    const activeSessionId = currentSessionId || sessionId;
+    const contentToSave = storyContent.trim();
+
+    try {
+      console.log(`💾 Saving session: ${activeSessionId}`);
+      
+      const response = await fetchWithAuth(`${API_BASE_URL}/api/session/${activeSessionId}/save`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          content: contentToSave,
+          domain: currentDomain || 'story',
+          metadata: {
+            word_count: contentToSave.split(/\s+/).length,
+            char_count: contentToSave.length,
+            last_saved: new Date().toISOString()
+          }
+        })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ Save request failed:', response.status, errorText);
+        throw new Error(`Save failed (${response.status}): ${errorText}`);
+      }
+
+      const result = await response.json();
+      console.log('✅ Session saved successfully:', result);
+      
+      // Show success feedback
+      setGeneratedPrompt(`✅ Session saved successfully!\n\n📝 Content: ${result.content_length} characters\n⏰ Saved at: ${new Date(result.timestamp).toLocaleTimeString()}`);
+      
+      // Clear success message after 3 seconds
+      setTimeout(() => {
+        if (generatedPrompt.startsWith('✅ Session saved')) {
+          setGeneratedPrompt('');
+        }
+      }, 3000);
+      
+    } catch (err) {
+      console.error('💥 Save error:', err);
+      setSessionError(err.message || 'Failed to save session. Please try again.');
+    }
+  };
+
+  /**
    * Auto-detect domain from user input
    * Currently disabled - domain detection happens via explicit user selection
    */
@@ -449,7 +506,22 @@ const Dashboard = ({ user }) => {
                     </svg>
                     {isGenerating ? 'Suggesting...' : isInitializing ? 'Initializing...' : 'Suggest'}
                   </button>
-                  <button className="cyber-button px-4 py-2 rounded-lg font-medium transition-all duration-300">
+                  <button 
+                    onClick={handleSave}
+                    disabled={
+                      isInitializing || 
+                      sessionError ||
+                      !((currentSessionId || sessionId) && storyContent && storyContent.trim().length > 0)
+                    }
+                    className="cyber-button px-4 py-2 rounded-lg font-medium transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                    title={
+                      isInitializing ? "Initializing session..." :
+                      sessionError ? "Session error - please refresh" :
+                      !storyContent || storyContent.trim().length === 0 ? "No content to save" :
+                      !(currentSessionId || sessionId) ? "Waiting for session..." :
+                      "Save current content to session"
+                    }
+                  >
                     <svg className="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3-3m0 0l-3 3m3-3v12" />
                     </svg>

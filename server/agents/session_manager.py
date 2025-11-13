@@ -458,6 +458,12 @@ class PromptTemplateGenerator:
                                 "type": "object", 
                                 "properties": {
                                     "branch_id": {"type": "string"},
+                                    "title": {"type": "string"},
+                                    "paragraph": {
+                                        "type": "string",
+                                        "minLength": 10,
+                                        "description": "REQUIRED: Textual explanation (3-5 sentences) describing the branch approach, rationale, and value"
+                                    },
                                     "content": domain_schema,  # Domain-specific content schema
                                     "score_estimate": {"type": "number", "minimum": 0, "maximum": 1},
                                     "meta": {
@@ -467,7 +473,8 @@ class PromptTemplateGenerator:
                                             "topic_family": {"type": "string"}
                                         }
                                     }
-                                }
+                                },
+                                "required": ["branch_id", "title", "paragraph"]
                             }
                         },
                         "call_metadata": {"type": "object"}
@@ -556,6 +563,11 @@ class PromptTemplateGenerator:
                             "properties": {
                                 "branch_id": {"type": "string"},
                                 "title": {"type": "string"},
+                                "paragraph": {
+                                    "type": "string",
+                                    "minLength": 10,
+                                    "description": "REQUIRED: Textual explanation (3-5 sentences) describing the branch approach, rationale, and value"
+                                },
                                 "rationale": {"type": "string"},
                                 "score_estimate": {
                                     "type": "number",
@@ -589,6 +601,7 @@ class PromptTemplateGenerator:
                                 },
                                 "meta": {"type": "object"},
                             },
+                            "required": ["branch_id", "title", "paragraph"]
                         },
                     },
                     "call_metadata": {"type": "object"},
@@ -1305,6 +1318,13 @@ class SessionManager:
 
         # Initialize PTG - core of blueprint architecture
         self.ptg = PromptTemplateGenerator()
+        
+        # Initialize workspace manager for persistence
+        from workspace import WorkspaceManager
+        self.workspace_manager = WorkspaceManager(
+            storage_root=config.get("storage_root", "data/workspaces"),
+            database_client=database_client
+        )
 
         # Session tracking
         self.active_sessions: Dict[str, Dict[str, Any]] = {}
@@ -1545,6 +1565,25 @@ class SessionManager:
         Get session workspace (alias for load_workspace for API consistency)
         """
         return await self.load_workspace(session_id)
+    
+    async def save_workspace(self, session_id: str, force: bool = False) -> bool:
+        """
+        Save workspace to disk/database using workspace_manager
+        
+        Args:
+            session_id: Session identifier
+            force: Force save even if no changes detected
+            
+        Returns:
+            True if save successful, False otherwise
+        """
+        try:
+            await self.workspace_manager.save_workspace(session_id, force=force)
+            logger.info(f"✅ Saved workspace for session {session_id}")
+            return True
+        except Exception as e:
+            logger.error(f"❌ Failed to save workspace {session_id}: {e}")
+            return False
 
     async def update_session(self, session_id: str, updates: Dict[str, Any]) -> bool:
         """

@@ -129,7 +129,7 @@ class ProjectionSchema(BaseSchema):
     events: List[EventSchema] = Field(
         default_factory=list, description="Events in this branch"
     )
-    paragraph: str = Field("", description="Textual representation of the branch")  # Made optional with default
+    paragraph: str = Field(..., min_length=10, description="REQUIRED: Textual explanation of the branch approach, rationale, and value (3-5 sentences minimum)")  # Made REQUIRED with min_length validation
     flags: Dict[str, List[str]] = Field(
         default_factory=dict, description="Flags for unverified facts, etc."
     )
@@ -259,6 +259,14 @@ class BacktrackRequest(BaseSchema):
     preserve_branches: bool = Field(
         True, description="Whether to preserve existing branches"
     )
+
+
+class SaveSessionRequest(BaseSchema):
+    """Request to save session content"""
+    
+    content: str = Field(..., description="Current content to save")
+    domain: Optional[str] = Field(None, description="Content domain/topic")
+    metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata to save")
 
 
 # Response schemas

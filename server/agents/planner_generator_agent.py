@@ -165,9 +165,10 @@ class PlannerGeneratorAgent:
                 if not isinstance(paragraph, str):
                     logger.warning(f"Branch paragraph is not a string, coercing to empty string. Branch: {json.dumps(branch)[:200]}...")
                     paragraph = str(paragraph) if paragraph is not None else ""
-                # If after coercion, still not valid, skip this branch
+                
+                # Validate both title and paragraph are non-empty
                 if not title.strip() or not paragraph.strip():
-                    logger.warning(f"Skipping branch due to empty title or paragraph after coercion. Branch: {json.dumps(branch)[:200]}...")
+                    logger.warning(f"Skipping branch due to empty title or paragraph. Branch: {json.dumps(branch)[:200]}...")
                     continue
                 events = content.get("events") or branch.get("events") or []
                 flags = content.get("flags") or branch.get("flags") or {}
