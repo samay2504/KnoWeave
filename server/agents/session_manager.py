@@ -1318,13 +1318,6 @@ class SessionManager:
 
         # Initialize PTG - core of blueprint architecture
         self.ptg = PromptTemplateGenerator()
-        
-        # Initialize workspace manager for persistence
-        from workspace import WorkspaceManager
-        self.workspace_manager = WorkspaceManager(
-            storage_root=config.get("storage_root", "data/workspaces"),
-            database_client=database_client
-        )
 
         # Session tracking
         self.active_sessions: Dict[str, Dict[str, Any]] = {}
@@ -1568,7 +1561,10 @@ class SessionManager:
     
     async def save_workspace(self, session_id: str, force: bool = False) -> bool:
         """
-        Save workspace to disk/database using workspace_manager
+        Save workspace to disk/database
+        
+        Production-grade save that works directly with session workspace.
+        No dependency on WorkspaceManager - uses the active session's workspace object.
         
         Args:
             session_id: Session identifier
@@ -1578,9 +1574,21 @@ class SessionManager:
             True if save successful, False otherwise
         """
         try:
-            await self.workspace_manager.save_workspace(session_id, force=force)
-            logger.info(f"✅ Saved workspace for session {session_id}")
+            # Get the active session's workspace
+            if session_id not in self.active_sessions:
+                logger.warning(f"⚠️  Cannot save - session {session_id} not found in active sessions")
+                return False
+            
+            workspace = self.active_sessions[session_id].get("workspace")
+            if not workspace:
+                logger.warning(f"⚠️  Cannot save - no workspace object for session {session_id}")
+                return False
+            
+            # Save directly through the workspace object
+            await workspace.save(force=force)
+            logger.info(f"💾 Saved session {session_id} - content length: {len(workspace.get_story_content())} chars")
             return True
+            
         except Exception as e:
             logger.error(f"❌ Failed to save workspace {session_id}: {e}")
             return False
