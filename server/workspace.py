@@ -44,7 +44,14 @@ class Workspace:
     Supports checkpointing, snapshots, and delta operations.
     """
 
-    def __init__(self, session_id: str, config: ServerConfig):
+    def __init__(self, session_id: str, config: Union[ServerConfig, Dict[str, Any]]):
+        """
+        Initialize workspace with session ID and configuration.
+        
+        Args:
+            session_id: Unique session identifier
+            config: Can be either ServerConfig object or config dict (production-grade flexibility)
+        """
         self.session_id = session_id
         self.config = config
         self.data: Dict[str, Any] = self._get_default_workspace()

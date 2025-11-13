@@ -1418,16 +1418,27 @@ class SessionManager:
             # Create WorkspaceSchema object
             workspace_schema = WorkspaceSchema(**workspace_data)
             
-            # Initialize workspace through workspace manager if available
+            # PRODUCTION FIX: Create workspace directly without WorkspaceManager
+            # Initialize workspace through Workspace class
             try:
-                from server.workspace import WorkspaceManager
-                workspace_manager = WorkspaceManager(self.config)
-                workspace = await workspace_manager.get_workspace(session_id)
+                from workspace import Workspace
                 
-                # Update workspace with schema data
+                # Workspace class handles both dict and ServerConfig - pass config as-is
+                workspace = Workspace(session_id=session_id, config=self.config)
+                
+                # Initialize database connections
+                await workspace.initialize()
+                
+                # Update workspace with all session data including user_id
                 workspace.update(workspace_schema.model_dump())
                 
-                # Save workspace to persistent storage
+                # Explicitly set user_id in metadata to ensure it's saved
+                if "metadata" not in workspace.data:
+                    workspace.data["metadata"] = {}
+                workspace.data["metadata"]["user_id"] = request.user_id
+                workspace.data["user_id"] = request.user_id
+                
+                # Save workspace to persistent storage (MongoDB + JSON)
                 await workspace.save(force=True)
                 
                 # Track session in session manager
@@ -1438,8 +1449,10 @@ class SessionManager:
                     "policy": workspace_schema.policy
                 }
                 
+                logger.info(f"✅ Created session {session_id} for user {request.user_id} - saved to MongoDB")
+                
             except Exception as workspace_error:
-                logger.warning(f"Workspace manager initialization failed: {workspace_error}")
+                logger.error(f"❌ Workspace creation failed: {workspace_error}")
                 # Fall back to storing workspace schema data directly
                 self.active_sessions[session_id] = {
                     "workspace_data": workspace_schema,  # Store schema directly as fallback
@@ -1448,8 +1461,7 @@ class SessionManager:
                     "last_activity": datetime.utcnow(),
                     "policy": workspace_schema.policy
                 }
-            
-            logger.info(f"Created session {session_id} for user {request.user_id}")
+                logger.warning(f"⚠️ Session {session_id} created with fallback storage (no MongoDB)")
             
             # Return the properly structured WorkspaceSchema
             return workspace_schema
@@ -1584,9 +1596,16 @@ class SessionManager:
                 logger.warning(f"⚠️  Cannot save - no workspace object for session {session_id}")
                 return False
             
+            # Get content length before save
+            content = workspace.get_story_content()
+            content_length = len(content) if content else 0
+            
             # Save directly through the workspace object
             await workspace.save(force=force)
-            logger.info(f"💾 Saved session {session_id} - content length: {len(workspace.get_story_content())} chars")
+            
+            # Log with MongoDB status
+            mongo_status = "✅ MongoDB" if workspace.mongo_client else "📁 JSON only"
+            logger.info(f"💾 Saved session {session_id} ({mongo_status}) - content length: {content_length} chars")
             return True
             
         except Exception as e:

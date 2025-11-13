@@ -1724,8 +1724,13 @@ def create_app() -> "FastAPI":
             # Update workspace with new content
             workspace_dict = workspace.model_dump() if hasattr(workspace, 'model_dump') else workspace
             
-            # Update content in workspace
-            workspace_dict["content"] = request.content
+            # PRODUCTION FIX: Map content to proper field based on topic
+            topic = workspace_dict.get("topic", "story")
+            if topic == "story":
+                workspace_dict["story_so_far"] = request.content
+            else:
+                workspace_dict["topic_content"] = request.content
+            
             workspace_dict["last_modified"] = datetime.utcnow()
             
             # Update domain if provided
