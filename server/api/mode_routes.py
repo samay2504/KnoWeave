@@ -93,26 +93,35 @@ async def update_mode(
     Update the current AI interaction mode
     """
     try:
+        # PRODUCTION FIX: Map frontend mode aliases to backend modes
+        mode_aliases = {
+            'creative': 'exploratory',  # Frontend uses 'creative', backend uses 'exploratory'
+            'precise': 'conservative',   # Alias for conservative
+            'adaptive': 'balanced'       # Alias for balanced
+        }
+        
+        actual_mode = mode_aliases.get(request.mode, request.mode)
+        
         # Validate mode
-        if request.mode not in PTG_MODES:
+        if actual_mode not in PTG_MODES:
             raise HTTPException(
                 status_code=400,
                 detail=f"Invalid mode. Must be one of: {list(PTG_MODES.keys())}"
             )
 
         # Update session manager mode
-        session_manager.current_mode = request.mode
+        session_manager.current_mode = actual_mode
         
         # Get mode configuration
-        mode_config = PTG_MODES[request.mode].copy()
+        mode_config = PTG_MODES[actual_mode].copy()
         if request.config:
             mode_config.update(request.config)
 
-        logger.info(f"Mode updated to: {request.mode}")
+        logger.info(f"Mode updated: {request.mode} → {actual_mode}")
 
         return ModeUpdateResponse(
             status="success",
-            mode=request.mode,
+            mode=actual_mode,
             config=mode_config,
             timestamp=datetime.now()
         )

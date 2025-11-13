@@ -279,6 +279,42 @@ def create_app() -> "FastAPI":
     if not FASTAPI_AVAILABLE:
         raise ImportError("FastAPI is required but not installed")
 
+    # ===== PRODUCTION FIX: Topic-Agnostic Helper Functions =====
+    def _get_topic_family_from_domain(domain: str) -> str:
+        """Map frontend domain to PTG topic_family"""
+        domain_to_family_map = {
+            'story': 'story',
+            'screenplay': 'story',
+            'technical': 'technical_writing',
+            'academic': 'academic',
+            'business': 'business',
+            'marketing': 'marketing'
+        }
+        return domain_to_family_map.get(domain, domain)
+    
+    def _get_topic_role(topic_family: str) -> str:
+        """Get appropriate role for topic family"""
+        role_map = {
+            'story': 'creative_writer',
+            'technical_writing': 'technical_documentation_specialist',
+            'academic': 'research_assistant',
+            'business': 'business_analyst',
+            'marketing': 'marketing_strategist'
+        }
+        return role_map.get(topic_family, 'assistant')
+    
+    def _get_topic_goal(topic_family: str) -> str:
+        """Get appropriate goal for topic family"""
+        goal_map = {
+            'story': 'craft engaging narratives with compelling characters and plot',
+            'technical_writing': 'create clear, accurate technical documentation',
+            'academic': 'produce rigorous, well-researched academic content',
+            'business': 'develop strategic business insights and recommendations',
+            'marketing': 'create persuasive, audience-focused marketing content'
+        }
+        return goal_map.get(topic_family, 'provide helpful assistance')
+    # ===== END PRODUCTION FIX =====
+
     # Create rate limiter
     limiter = Limiter(key_func=get_remote_address)
 
@@ -530,10 +566,10 @@ def create_app() -> "FastAPI":
             perception_agent = agents["perception"]
             if hasattr(perception_agent, 'detect_domain_and_role_llm'):
                 result = await perception_agent.detect_domain_and_role_llm(text)
-                logger.info(f"✅ Domain detected via LLM: {result.get('topic_family')} (confidence: {result.get('confidence', 0):.2f})")
+                logger.info(f"✅ Domain detected via LLM: {result.get('topic_family')} (confidence: {result.get('confidence', 0.0):.2f})")
             elif hasattr(perception_agent, 'detect_domain_and_role'):
                 result = perception_agent.detect_domain_and_role(text)
-                logger.info(f"ℹ️  Domain detected via patterns: {result.get('topic_family')} (confidence: {result.get('confidence', 0):.2f})")
+                logger.info(f"ℹ️  Domain detected via patterns: {result.get('topic_family')} (confidence: {result.get('confidence', 0.0):.2f})")
             else:
                 # Fallback: basic domain detection
                 result = {
@@ -1262,16 +1298,32 @@ def create_app() -> "FastAPI":
             topic = request.options.get("topic", "general")
             topic_descriptor = request.options.get("context", "Content generation and analysis")
             
-            # 1. Perception with PTG-generated prompt
+            # PRODUCTION FIX: Extract domain metadata once for all agents
+            workspace_dict = workspace.dict() if hasattr(workspace, 'dict') else workspace
+            workspace_metadata = workspace_dict.get("metadata", {})
+            if hasattr(workspace_metadata, 'dict'):
+                workspace_metadata = workspace_metadata.dict()
+            
+            content_domain = workspace_metadata.get("content_domain", workspace_dict.get("topic", "story"))
+            topic_family = _get_topic_family_from_domain(content_domain)
+            topic_role = _get_topic_role(topic_family)
+            topic_goal = _get_topic_goal(topic_family)
+            
+            logger.info(f"🔍 Pipeline Domain Context - Domain: {content_domain}, Family: {topic_family}, Role: {topic_role}")
+            
+            # 1. Perception with PTG-generated prompt (domain-aware)
             if hasattr(session_manager, 'ptg') and session_manager.ptg:
                 try:
                     perception_prompt = session_manager.ptg.generate_canonical_prompt(
                         agent_name="perception",
                         session_id=session_id,
-                        topic=topic,
+                        topic=content_domain,
                         topic_descriptor=topic_descriptor,
                         input_data={"mode": request.mode, "content": workspace_data.get("content", "")},
-                        mode=request.mode
+                        mode=request.mode,
+                        topic_family=topic_family,
+                        topic_role=topic_role,
+                        topic_goal=topic_goal
                     )
                     perception_result = await agents["perception"].invoke(
                         workspace_data,
@@ -1293,19 +1345,22 @@ def create_app() -> "FastAPI":
                     {"session_id": session_id, "mode": request.mode}
                 )
 
-            # 2. Update graph with PTG-generated prompt
+            # 2. Update graph with PTG-generated prompt (domain-aware)
             if hasattr(session_manager, 'ptg') and session_manager.ptg:
                 try:
                     graph_prompt = session_manager.ptg.generate_canonical_prompt(
                         agent_name="graph_manager",
                         session_id=session_id,
-                        topic=topic,
+                        topic=content_domain,
                         topic_descriptor=topic_descriptor,
                         input_data={
                             "entities": perception_result.get("entities", []),
                             "events": perception_result.get("events", [])
                         },
-                        mode=request.mode
+                        mode=request.mode,
+                        topic_family=topic_family,
+                        topic_role=topic_role,
+                        topic_goal=topic_goal
                     )
                     await agents["graph_manager"].invoke(
                         workspace_data,
@@ -1336,7 +1391,7 @@ def create_app() -> "FastAPI":
                     }
                 )
 
-            # 3. Generate projections with PTG-generated prompt
+            # 3. Generate projections with PTG-generated prompt (domain-aware)
             max_branches = request.options.get("max_branches", 3)
             logger.warning(f"🔍 Starting Planner with max_branches: {max_branches}")
             if hasattr(session_manager, 'ptg') and session_manager.ptg:
@@ -1345,14 +1400,17 @@ def create_app() -> "FastAPI":
                     planner_prompt = session_manager.ptg.generate_canonical_prompt(
                         agent_name="planner",
                         session_id=session_id,
-                        topic=topic,
+                        topic=content_domain,
                         topic_descriptor=topic_descriptor,
                         input_data={
                             "max_branches": max_branches,
                             "content": workspace_data.get("content", ""),
                             "context": request.options.get("context", "")
                         },
-                        mode=request.mode
+                        mode=request.mode,
+                        topic_family=topic_family,
+                        topic_role=topic_role,
+                        topic_goal=topic_goal
                     )
                     logger.warning(f"🔍 PTG prompt generated successfully, keys: {list(planner_prompt.keys())}")
                     planner_result = await agents["planner"].invoke(
@@ -1387,7 +1445,7 @@ def create_app() -> "FastAPI":
                     }
                 )
 
-            # 4. Verify branches with PTG-generated prompts
+            # 4. Verify branches with PTG-generated prompts (domain-aware)
             verified_branches = []
             verifications = []
             for branch in planner_result.get("branches", []):
@@ -1396,13 +1454,16 @@ def create_app() -> "FastAPI":
                         verifier_prompt = session_manager.ptg.generate_canonical_prompt(
                             agent_name="verifier",
                             session_id=session_id,
-                            topic=topic,
+                            topic=content_domain,
                             topic_descriptor=topic_descriptor,
                             input_data={
                                 "content": branch.get("content", {}) if isinstance(branch, dict) else str(branch),
                                 "branch_data": branch
                             },
-                            mode=request.mode
+                            mode=request.mode,
+                            topic_family=topic_family,
+                            topic_role=topic_role,
+                            topic_goal=topic_goal
                         )
                         verification = await agents["verifier"].invoke(
                             workspace_data,
@@ -1434,17 +1495,20 @@ def create_app() -> "FastAPI":
                 verifications.append(verification)
                 verified_branches.append(branch)
 
-            # 5. Score and rank with PTG-generated prompt
+            # 5. Score and rank with PTG-generated prompt (domain-aware)
             workspace_data["branches"] = verified_branches
             if hasattr(session_manager, 'ptg') and session_manager.ptg:
                 try:
                     evaluator_prompt = session_manager.ptg.generate_canonical_prompt(
                         agent_name="evaluator",
                         session_id=session_id,
-                        topic=topic,
+                        topic=content_domain,
                         topic_descriptor=topic_descriptor,
                         input_data={"branches": verified_branches},
-                        mode=request.mode
+                        mode=request.mode,
+                        topic_family=topic_family,
+                        topic_role=topic_role,
+                        topic_goal=topic_goal
                     )
                     evaluation = await agents["evaluator"].invoke(
                         workspace_data,
@@ -1847,8 +1911,9 @@ def create_app() -> "FastAPI":
             from utils.schemas import MetadataSchema
             workspace.metadata = MetadataSchema(**metadata_dict)
             
-            # PRODUCTION FIX: Use update_session instead of save_workspace
-            success = await session_manager.update_session(session_id, workspace)
+            # PRODUCTION FIX: Pass dict to update_session, not Pydantic model
+            workspace_dict_for_update = workspace.model_dump() if hasattr(workspace, 'model_dump') else workspace.dict()
+            success = await session_manager.update_session(session_id, workspace_dict_for_update)
             if not success:
                 raise HTTPException(status_code=500, detail="Failed to update session")
             

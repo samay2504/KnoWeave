@@ -29,7 +29,7 @@ const DomainSelector = ({
       color: 'text-purple-400',
       bgColor: 'bg-purple-500/10',
       borderColor: 'border-purple-500/30',
-      preferredMode: 'creative'
+      preferredMode: 'exploratory'  // Backend uses 'exploratory' for creative content
     },
     screenplay: {
       name: 'Screenplay',

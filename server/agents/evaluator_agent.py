@@ -537,11 +537,17 @@ class EvaluatorAgent:
 
         for attempt in range(self.RETRY_MAX):
             try:
-                # Call LLM provider
+                # Call LLM provider - invoke() returns string or dict
                 response = await self.llm_provider.invoke(prompt_data["prompt"])
 
+                # PRODUCTION FIX: invoke() typically returns string, but handle both cases
+                if isinstance(response, dict):
+                    response_text = response.get("content") or response.get("text", "")
+                else:
+                    response_text = str(response)
+
                 # Validate JSON response
-                result = self.validate_json_response(response.get("content", ""))
+                result = self.validate_json_response(response_text)
                 if result.get("valid"):
                     return result["data"]
 

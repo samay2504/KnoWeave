@@ -47,7 +47,7 @@ class PromptTemplateGenerator:
 
     # Global prompt rules constants
     RETRY_MAX = 3
-    MAX_PROMPT_CHARS = 8000
+    MAX_PROMPT_CHARS = 16000  # Increased for enhanced production-grade prompts (was 8000)
     STRICT_JSON_INSTRUCTION = (
         "RESPONSE FORMAT: Return only a single JSON object exactly matching the schema provided below. "
         "Do not include explanatory text, code fences, or extra fields."
@@ -57,7 +57,7 @@ class PromptTemplateGenerator:
         "If confused, reduce response complexity."
     )
 
-    def __init__(self, examples_path: str = "prompts/examples.json"):
+    def __init__(self, examples_path: str = "prompts/examples.json", enhanced_instructions_path: str = "prompts/enhanced_agent_instructions.json"):
         # More robust path resolution to handle different working directories
         if not Path(examples_path).is_absolute():
             # Try to find the examples file relative to this module first
@@ -70,11 +70,24 @@ class PromptTemplateGenerator:
                 self.examples_path = Path(examples_path)
         else:
             self.examples_path = Path(examples_path)
+        
+        # Load enhanced instructions similarly
+        if not Path(enhanced_instructions_path).is_absolute():
+            module_dir = Path(__file__).parent.parent
+            potential_path = module_dir / enhanced_instructions_path
+            if potential_path.exists():
+                self.enhanced_instructions_path = potential_path
+            else:
+                self.enhanced_instructions_path = Path(enhanced_instructions_path)
+        else:
+            self.enhanced_instructions_path = Path(enhanced_instructions_path)
             
         self.examples_cache = {}
+        self.enhanced_instructions = {}
         self.template_cache = {}
         self.schema_version = "1.0"
         self.load_examples()
+        self.load_enhanced_instructions()
 
     def load_examples(self) -> None:
         """Load canonical few-shot examples from examples.json"""
@@ -93,6 +106,24 @@ class PromptTemplateGenerator:
         except Exception as e:
             logger.error(f"Failed to load canonical examples: {e}")
             self.examples_cache = self._get_canonical_fallback_examples()
+    
+    def load_enhanced_instructions(self) -> None:
+        """Load enhanced production-grade agent instructions"""
+        try:
+            if self.enhanced_instructions_path.exists():
+                with open(self.enhanced_instructions_path, "r", encoding="utf-8") as f:
+                    self.enhanced_instructions = json.load(f)
+                logger.info(
+                    f"✅ Loaded enhanced production-grade instructions for {len([k for k in self.enhanced_instructions.keys() if '_agent' in k])} agents"
+                )
+            else:
+                logger.warning(
+                    f"⚠️ Enhanced instructions file not found: {self.enhanced_instructions_path}, using base instructions"
+                )
+                self.enhanced_instructions = {}
+        except Exception as e:
+            logger.error(f"❌ Failed to load enhanced instructions: {e}")
+            self.enhanced_instructions = {}
 
     def _get_canonical_fallback_examples(self) -> Dict[str, Any]:
         """Canonical fallback examples matching the prompt specification"""
@@ -261,7 +292,47 @@ class PromptTemplateGenerator:
         }
 
     def _get_canonical_agent_instructions(self, agent_name: str, mode: str = "balanced", topic_family: str = None, topic_role: str = None, topic_goal: str = None) -> str:
-        """Get canonical system prompts with mode-specific modifications and topic context"""
+        """Get canonical system prompts with mode-specific modifications and topic context - ENHANCED VERSION"""
+        
+        # Try to use enhanced instructions first
+        if self.enhanced_instructions:
+            agent_key = f"{agent_name}_agent"
+            if agent_key in self.enhanced_instructions:
+                enhanced = self.enhanced_instructions[agent_key]
+                base_instruction = enhanced.get("base_instruction", {})
+                
+                # Build comprehensive instruction from enhanced template
+                system_prompt_template = base_instruction.get("system_prompt_template", "")
+                
+                # Use simple string replacement to avoid KeyError
+                # Replace all known placeholders
+                enhanced_prompt = system_prompt_template
+                replacements = {
+                    '{topic_family}': topic_family or "general",
+                    '{topic_role}': topic_role or "assistant",
+                    '{topic_goal}': topic_goal or "provide assistance",
+                    '{max_branches}': '3',
+                    '{merge_threshold}': '0.90',
+                    '{prune_threshold}': '0.5',
+                    '{max_age_days}': '30',
+                    '{min_access}': '2',
+                    '{max_backtrack_depth}': '2'
+                }
+                
+                for placeholder, value in replacements.items():
+                    enhanced_prompt = enhanced_prompt.replace(placeholder, str(value))
+                
+                # Add mode-specific variations if available
+                if "mode_variations" in enhanced and mode in enhanced["mode_variations"]:
+                    mode_specific = enhanced["mode_variations"][mode]
+                    enhanced_prompt += f"\n\n**MODE: {mode.upper()}**: {mode_specific}"
+                
+                logger.info(f"✅ Using enhanced production-grade instructions for {agent_name}")
+                return enhanced_prompt
+        
+        # Fallback to original base prompts if enhanced not available
+        logger.debug(f"Using fallback base instructions for {agent_name}")
+        
         # Mode configurations
         MODE_CONFIGS = {
             "conservative": {
@@ -884,12 +955,14 @@ INSTRUCTIONS:
             + instructions_section
         )
 
-        # Check prompt length and truncate if needed
+        # Check prompt length and truncate if needed (only in extreme cases)
         if len(full_prompt) > self.MAX_PROMPT_CHARS:
-            logger.warning(f"Prompt too long ({len(full_prompt)} chars), truncating")
-            # Truncate context first, then examples if still too long
+            logger.warning(f"Prompt extremely long ({len(full_prompt)} chars), intelligently truncating")
+            # Truncate context first (keep first 2000 chars), then examples if still too long
             if context_section and len(full_prompt) > self.MAX_PROMPT_CHARS:
-                context_section = context_section[:1000] + "...\n"
+                context_section = context_section[:2000] + "\n...[context truncated for length]...\n"
+            
+            # If still too long, truncate examples
             full_prompt = (
                 system_section
                 + topic_section
@@ -900,6 +973,22 @@ INSTRUCTIONS:
                 + schema_section
                 + instructions_section
             )
+            
+            if len(full_prompt) > self.MAX_PROMPT_CHARS:
+                logger.warning(f"Still too long after context truncation, reducing examples")
+                if examples_section and len(examples_section) > 2000:
+                    examples_section = examples_section[:2000] + "\n...[examples truncated]...\n"
+                
+                full_prompt = (
+                    system_section
+                    + topic_section
+                    + context_section
+                    + constraints_section
+                    + input_section
+                    + examples_section
+                    + schema_section
+                    + instructions_section
+                )
 
         return full_prompt
 
@@ -1475,8 +1564,17 @@ class SessionManager:
             
             workspace = self.active_sessions[session_id]["workspace"]
             
+            # PRODUCTION FIX: Handle Pydantic model updates correctly
+            # If updates is a Pydantic model, convert to dict first
+            if hasattr(updates, 'dict'):
+                updates_dict = updates.dict()
+            elif hasattr(updates, 'model_dump'):
+                updates_dict = updates.model_dump()
+            else:
+                updates_dict = updates
+            
             # Update workspace data
-            workspace.update(updates)
+            workspace.update(updates_dict)
             
             # Update session tracking
             self.active_sessions[session_id]["last_activity"] = datetime.utcnow()

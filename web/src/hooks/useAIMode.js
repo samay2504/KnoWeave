@@ -144,10 +144,21 @@ export const useAIMode = (initialMode = 'balanced') => {
     initializeMode();
   }, [initialMode, updateMode]);
 
+  // PRODUCTION FIX: Client-side cache to prevent redundant API calls
+  const [domainCache] = useState(new Map()); // Cache: text → {result, timestamp}
+
   /**
    * Detect domain from user input text
    */
   const detectDomain = async (text) => {
+    // PRODUCTION FIX: Check cache first (5-minute TTL)
+    const cacheKey = text.trim().substring(0, 500);
+    const cached = domainCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < 300000) {
+      console.log('✅ Domain detection cache hit');
+      return cached.result;
+    }
+
     setIsLoading(true);
     setError(null);
 
@@ -168,6 +179,15 @@ export const useAIMode = (initialMode = 'balanced') => {
       }
 
       const result = await response.json();
+      
+      // PRODUCTION FIX: Cache successful result
+      domainCache.set(cacheKey, { result, timestamp: Date.now() });
+      // Limit cache size to 50 entries
+      if (domainCache.size > 50) {
+        const firstKey = domainCache.keys().next().value;
+        domainCache.delete(firstKey);
+      }
+      
       return result;
     } catch (err) {
       console.error('Error detecting domain:', err);

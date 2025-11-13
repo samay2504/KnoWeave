@@ -793,6 +793,9 @@ Return ONLY this JSON structure (no other text):
 
 JSON only, no explanation:"""
 
+                # PRODUCTION FIX: Import json at function start to prevent UnboundLocalError
+                import json
+                
                 response = await self.llm_provider.generate(
                     prompt=prompt,
                     max_tokens=300,
@@ -800,8 +803,15 @@ JSON only, no explanation:"""
                 )
                 
                 # Parse LLM response
-                import json
-                response_text = response.get("text", "").strip()
+                # PRODUCTION FIX: llm_provider.generate() returns {"content": text} or {"raw_response": text}
+                # perception_agent was looking for "text" key which doesn't exist → always returned ""
+                response_text = response.get("content") or response.get("raw_response") or response.get("text", "")
+                response_text = response_text.strip() if response_text else ""
+                
+                # PRODUCTION FIX: Handle empty/failed LLM responses immediately
+                if not response_text or len(response_text) < 10:
+                    logger.warning(f"LLM returned empty/minimal response (length: {len(response_text)}), using pattern matching")
+                    return self.detect_domain_and_role(text)
                 
                 # Remove markdown code blocks if present
                 response_text = re.sub(r'```json\s*', '', response_text)
@@ -1034,7 +1044,9 @@ Return JSON:
                 max_tokens=300
             )
             
-            response_text = response.strip()
+            # PRODUCTION FIX: generate() returns dict, not string
+            response_text = response.get("content") or response.get("raw_response") or response.get("text", "")
+            response_text = response_text.strip() if response_text else ""
             
             # Try to parse JSON response
             try:
@@ -1220,6 +1232,9 @@ Return ONLY this JSON structure (no other text):
 
 JSON only, no explanation:"""
 
+                # PRODUCTION FIX: Import json at function start to prevent UnboundLocalError
+                import json
+                
                 response = await self.llm_provider.generate(
                     prompt=prompt,
                     max_tokens=400,
@@ -1227,8 +1242,15 @@ JSON only, no explanation:"""
                 )
                 
                 # Parse LLM response
-                import json
-                response_text = response.get("text", "").strip()
+                # PRODUCTION FIX: llm_provider.generate() returns {"content": text} or {"raw_response": text}
+                # perception_agent was looking for "text" key which doesn't exist → always returned ""
+                response_text = response.get("content") or response.get("raw_response") or response.get("text", "")
+                response_text = response_text.strip() if response_text else ""
+                
+                # PRODUCTION FIX: Handle empty/failed LLM responses immediately
+                if not response_text or len(response_text) < 10:
+                    logger.warning(f"LLM returned empty/minimal response (length: {len(response_text)}), using rule-based")
+                    return self.recommend_mode_rules(text, domain)
                 
                 # Remove markdown code blocks if present
                 response_text = re.sub(r'```json\s*', '', response_text)

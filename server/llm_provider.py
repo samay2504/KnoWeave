@@ -8,6 +8,7 @@ import logging
 import asyncio
 import json
 import re
+import time
 from datetime import datetime
 from typing import Optional, Dict, Any, Union, List
 from pathlib import Path
@@ -107,6 +108,15 @@ class AsyncLLMProvider:
         self.client = None
         if HTTPX_AVAILABLE:
             self.client = httpx.AsyncClient()
+            
+        # PRODUCTION FIX: Track failed providers to prevent retry loops
+        self.failed_providers = set()  # Providers that hit quota/errors
+        
+        # PRODUCTION FIX: Request throttling to prevent quota exhaustion
+        self.request_cache = {}  # Cache recent requests {hash: (timestamp, response)}
+        self.request_timestamps = []  # Track request times for rate limiting
+        self.rate_limit_window = 60  # seconds
+        self.max_requests_per_window = 8  # Conservative limit for free tiers
             
         # Prompt audit logging
         self.prompt_audit_enabled = os.getenv("PROMPT_AUDIT", "false").lower() == "true"
@@ -239,6 +249,11 @@ class AsyncLLMProvider:
         for provider_name in provider_preference:
             if provider_name in provider_map:
                 provider_display, provider_func, api_key_env = provider_map[provider_name]
+                
+                # PRODUCTION FIX: Skip providers that previously failed (quota exceeded)
+                if provider_name in self.failed_providers:
+                    logger.debug(f"Skipping {provider_display}: previously failed (quota/error)")
+                    continue
                 
                 # Skip providers that require API keys but don't have them configured
                 if api_key_env and not self._has_api_key(api_key_env):
@@ -419,7 +434,7 @@ class AsyncLLMProvider:
                         model=model,
                         google_api_key=api_key,
                         temperature=self.config.get("temperature", 0.39),
-                        max_retries=0,
+                        max_retries=0,  # Disable LangChain retries
                     )
 
                     # Test the connection
@@ -728,7 +743,33 @@ class AsyncLLMProvider:
         return fallback_llm
 
     async def invoke(self, prompt: str, session_id: str = "", agent: str = "") -> Union[str, Dict[str, Any]]:
-        """Invoke the LLM with a prompt asynchronously."""
+        """Invoke the LLM with a prompt asynchronously with automatic fallback."""
+        
+        # PRODUCTION FIX: Check cache first to avoid redundant LLM calls
+        import hashlib
+        cache_key = hashlib.md5(f"{prompt[:500]}{agent}".encode()).hexdigest()
+        current_time = time.time()
+        
+        if cache_key in self.request_cache:
+            cached_time, cached_response = self.request_cache[cache_key]
+            # Cache valid for 5 minutes
+            if current_time - cached_time < 300:
+                logger.debug(f"✅ Cache hit for {agent} request (age: {current_time - cached_time:.1f}s)")
+                return cached_response
+        
+        # PRODUCTION FIX: Rate limiting - check if we're exceeding quota
+        self.request_timestamps = [ts for ts in self.request_timestamps if current_time - ts < self.rate_limit_window]
+        
+        if len(self.request_timestamps) >= self.max_requests_per_window:
+            wait_time = self.rate_limit_window - (current_time - self.request_timestamps[0])
+            logger.warning(f"⚠️ Rate limit reached ({len(self.request_timestamps)} requests in {self.rate_limit_window}s), waiting {wait_time:.1f}s")
+            await asyncio.sleep(wait_time + 1)
+            # Clean up old timestamps after waiting
+            self.request_timestamps = [ts for ts in self.request_timestamps if time.time() - ts < self.rate_limit_window]
+        
+        # Record this request attempt
+        self.request_timestamps.append(current_time)
+        
         try:
             # Log prompt audit before invocation
             self._log_prompt_audit(prompt, session_id, agent)
@@ -741,27 +782,109 @@ class AsyncLLMProvider:
 
             # Log successful response
             self._log_prompt_audit(prompt, session_id, agent, response)
-
-            # Handle different response formats
+            
+            # PRODUCTION FIX: Cache successful response
+            result_text = None
             if isinstance(response, dict):
                 if "content" in response:
-                    return response["content"]
+                    result_text = response["content"]
                 elif "text" in response:
-                    return response["text"]
+                    result_text = response["text"]
                 else:
-                    return str(response)
+                    result_text = str(response)
             elif isinstance(response, str):
-                return response
+                result_text = response
             else:
                 # Try to get content from response object
                 if hasattr(response, "content"):
-                    return response.content
+                    result_text = response.content
                 elif hasattr(response, "text"):
-                    return response.text
+                    result_text = response.text
                 else:
-                    return str(response)
+                    result_text = str(response)
+            
+            # Cache the result
+            self.request_cache[cache_key] = (current_time, result_text)
+            # Limit cache size to 100 entries
+            if len(self.request_cache) > 100:
+                oldest_key = min(self.request_cache.keys(), key=lambda k: self.request_cache[k][0])
+                del self.request_cache[oldest_key]
+            
+            return result_text
 
         except Exception as e:
+            error_msg = str(e)
+            
+            # PRODUCTION FIX: Detect quota errors immediately (even from LangChain retry warnings)
+            # Check if this is a quota/rate-limit error from the FIRST attempt
+            is_quota_error = any(phrase in error_msg.lower() for phrase in [
+                'quota exceeded', 'rate limit', '429', 'resource exhausted',
+                'too many requests', 'billing', 'usage limit', 'retry in'
+            ])
+            
+            # IMMEDIATE FAILOVER: Don't wait for LangChain's internal retries
+            if is_quota_error:
+                logger.warning(f"⚠️ QUOTA ERROR DETECTED on {self.current_provider} - triggering immediate failover")
+                
+                # PRODUCTION FIX: Blacklist the failed provider to prevent retry loops
+                failed_provider = self.current_provider
+                
+                # Extract base provider name (e.g., "google_genai" from "google_genai_gemini-2.5-flash")
+                if failed_provider:
+                    base_provider = 'google_genai' if 'google' in failed_provider.lower() else \
+                                   'groq' if 'groq' in failed_provider.lower() else \
+                                   'openrouter' if 'openrouter' in failed_provider.lower() else \
+                                   'openai' if 'openai' in failed_provider.lower() else \
+                                   failed_provider.split('_')[0] if '_' in failed_provider else failed_provider
+                    
+                    self.failed_providers.add(base_provider)
+                    logger.info(f"🚫 Blacklisted provider: {base_provider} (will skip in next attempt)")
+                
+                # Try to reinitialize with next available provider (will skip blacklisted ones)
+                try:
+                    await self._setup_llm()  # This will skip failed_providers
+                    
+                    if self.current_provider != failed_provider:
+                        logger.info(f"✅ Successfully failed over from {failed_provider} to {self.current_provider}")
+                        # Retry with new provider (only once to avoid infinite loop)
+                        if not hasattr(self, '_failover_retry_count'):
+                            self._failover_retry_count = 0
+                        
+                        if self._failover_retry_count < 1:
+                            self._failover_retry_count += 1
+                            result = await self.invoke(prompt, session_id, agent)
+                            self._failover_retry_count = 0  # Reset on success
+                            return result
+                        else:
+                            logger.error("❌ Failover already attempted once, aborting to prevent loop")
+                    else:
+                        logger.error(f"❌ No alternative providers available after {failed_provider} quota")
+                except Exception as fallback_err:
+                    logger.error(f"❌ Fallback initialization failed: {fallback_err}")
+            
+            # PRODUCTION FIX: Auto-fallback on quota/rate-limit errors (legacy path)
+            is_quota_error = any(phrase in error_msg.lower() for phrase in [
+                'quota exceeded', 'rate limit', '429', 'resource exhausted',
+                'too many requests', 'billing', 'usage limit'
+            ])
+            
+            if is_quota_error and self.current_provider != "fallback":
+                logger.warning(f"⚠️ {self.current_provider} quota exceeded, attempting fallback to other providers...")
+                
+                # Try to reinitialize with next available provider
+                try:
+                    old_provider = self.current_provider
+                    await self._setup_llm()  # This will try remaining providers
+                    
+                    if self.current_provider != old_provider:
+                        logger.info(f"✅ Successfully failed over from {old_provider} to {self.current_provider}")
+                        # Retry with new provider
+                        return await self.invoke(prompt, session_id, agent)
+                    else:
+                        logger.error(f"❌ No alternative providers available, using fallback")
+                except Exception as fallback_err:
+                    logger.error(f"❌ Fallback initialization failed: {fallback_err}")
+            
             # Log failed invocation
             self._log_prompt_audit(prompt, session_id, agent, error=str(e))
             logger.error(f"LLM invocation failed: {e}")
@@ -804,8 +927,10 @@ class AsyncLLMProvider:
                     }
             else:
                 # Return the text response wrapped in a dict for consistency
+                # PRODUCTION FIX: Include "text" key for backward compatibility with older code
                 return {
                     "content": response_text,
+                    "text": response_text,  # Backward compatibility
                     "raw_response": response_text
                 }
                 

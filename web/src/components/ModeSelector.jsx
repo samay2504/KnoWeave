@@ -66,17 +66,6 @@ const ModeSelector = ({
       temperature: 0.2,
       creativity: 0.1,
       consistency: 0.9
-    },
-    creative: {
-      name: 'Creative',
-      description: 'Maximum creativity for stories and artistic content',
-      color: 'text-pink-400',
-      bgColor: 'bg-pink-500/10',
-      borderColor: 'border-pink-500/30',
-      icon: '🎨',
-      temperature: 0.9,
-      creativity: 0.9,
-      consistency: 0.1
     }
   }), []);
 
