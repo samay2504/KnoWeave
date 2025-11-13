@@ -554,6 +554,59 @@ def create_app() -> "FastAPI":
             logger.error(f"❌ Domain detection failed: {e}")
             raise HTTPException(status_code=500, detail=str(e))
 
+    @app.post("/api/agents/perception/recommend-mode")
+    async def perception_recommend_mode(request: Request):
+        """Recommend AI mode using LLM analysis of text content and context"""
+        try:
+            if not agents.get("perception"):
+                raise HTTPException(status_code=500, detail="Perception agent not available")
+            
+            data = await request.json()
+            text = data.get("text", "") or data.get("content", "") or data.get("input_text", "")
+            domain = data.get("domain")
+            
+            if not text:
+                raise HTTPException(status_code=400, detail="text, content, or input_text required")
+            
+            # Call LLM-powered mode recommendation if available, fallback to rule-based
+            perception_agent = agents["perception"]
+            if hasattr(perception_agent, 'recommend_mode_llm'):
+                result = await perception_agent.recommend_mode_llm(text, domain)
+                method = result.get('method', 'llm')
+                logger.info(f"✅ Mode recommended via {method}: {result.get('recommended_mode')} (confidence: {result.get('confidence', 0):.2f})")
+            elif hasattr(perception_agent, 'recommend_mode_rules'):
+                result = perception_agent.recommend_mode_rules(text, domain)
+                logger.info(f"ℹ️  Mode recommended via rules: {result.get('recommended_mode')} (confidence: {result.get('confidence', 0):.2f})")
+            else:
+                # Fallback: basic domain-based recommendation
+                domain_mode_map = {
+                    'story': 'creative',
+                    'screenplay': 'balanced',
+                    'technical': 'focused',
+                    'academic': 'conservative',
+                    'business': 'balanced',
+                    'marketing': 'exploratory'
+                }
+                recommended = domain_mode_map.get(domain, 'balanced')
+                result = {
+                    "recommended_mode": recommended,
+                    "confidence": 0.6,
+                    "reasoning": f"Domain-based recommendation for {domain}",
+                    "alternative_modes": ["balanced"],
+                    "method": "fallback"
+                }
+                logger.warning(f"Using fallback mode recommendation: {recommended}")
+            
+            return {
+                "status": "success",
+                "mode_recommendation": result,
+                "timestamp": datetime.now().isoformat()
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Mode recommendation failed: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+
     @app.post("/api/agents/planner/generate")
     async def planner_generate(request: Request):
         """Direct planner agent generation with production-grade error handling"""
@@ -1780,20 +1833,23 @@ def create_app() -> "FastAPI":
             if not workspace:
                 raise HTTPException(status_code=404, detail="Session not found")
             
-            # Update workspace metadata
-            if not hasattr(workspace, 'metadata'):
-                workspace.metadata = {}
-            
-            workspace.metadata['content_domain'] = domain
-            workspace.metadata['domain_detection'] = {
+            # PRODUCTION FIX: Update metadata using Pydantic model.copy() with update
+            # MetadataSchema doesn't support item assignment, must create new instance
+            metadata_dict = workspace.metadata.dict() if workspace.metadata else {}
+            metadata_dict['content_domain'] = domain
+            metadata_dict['domain_detection'] = {
                 'method': 'ai' if is_ai_detected else 'manual',
                 'confidence': confidence,
                 'updated_at': datetime.now().isoformat()
             }
             
+            # Create new MetadataSchema with updated values
+            from utils.schemas import MetadataSchema
+            workspace.metadata = MetadataSchema(**metadata_dict)
+            
             await session_manager.save_workspace(session_id, workspace)
             
-            detection_method = f"AI-detected (confidence: {confidence:.2f})" if is_ai_detected else "manual"
+            detection_method = f"AI-detected (confidence: {confidence:.2f})" if is_ai_detected and confidence else "manual"
             logger.info(f"📋 Session {session_id} domain updated to '{domain}' ({detection_method})")
             
             return {

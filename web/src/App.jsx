@@ -515,6 +515,8 @@ const Dashboard = ({ user }) => {
                   onModeChange={handleModeChange}
                   disabled={modeLoading}
                   currentDomain={currentDomain}
+                  userInput={storyContent}
+                  autoDetect={isDomainDetectionEnabled}
                   className="cyber-input"
                 />
               </div>

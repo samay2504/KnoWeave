@@ -1,21 +1,28 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { fetchWithAuth } from '../utils/api';
+
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:8000';
 
 /**
- * PRODUCTION-GRADE Mode Selector with smart recommendations
- * Implements blueprint-specified modes: conservative, balanced, exploratory, focused, creative
+ * PRODUCTION-GRADE Mode Selector with AI-powered LLM recommendations
+ * Uses PerceptionAgent to intelligently recommend modes based on content analysis
  */
 const ModeSelector = ({ 
   currentMode = 'balanced', 
   onModeChange, 
   disabled = false,
-  currentDomain = null,  // Pass domain for smart mode suggestions
+  currentDomain = null,
+  userInput = '',  // Current text content for AI analysis
+  autoDetect = true,  // Enable AI-powered mode recommendations
   className = '' 
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [selectedMode, setSelectedMode] = useState(currentMode);
+  const [isDetecting, setIsDetecting] = useState(false);
+  const [aiRecommendation, setAiRecommendation] = useState(null);
 
-  // Blueprint-compliant mode configurations with cyber styling
-  const modes = {
+  // Blueprint-compliant mode configurations with cyber styling (memoized)
+  const modes = useMemo(() => ({
     conservative: {
       name: 'Conservative',
       description: 'Safe, predictable continuations with proven approaches',
@@ -71,12 +78,12 @@ const ModeSelector = ({
       creativity: 0.9,
       consistency: 0.1
     }
-  };
+  }), []);
 
   const currentModeConfig = modes[selectedMode] || modes.balanced;
 
-  // Smart mode recommendation based on domain
-  const getRecommendedMode = () => {
+  // Static rule-based recommendation based on domain (fallback)
+  const getStaticRecommendation = useCallback(() => {
     if (!currentDomain) return null;
     
     const recommendations = {
@@ -89,21 +96,76 @@ const ModeSelector = ({
     };
     
     return recommendations[currentDomain];
-  };
+  }, [currentDomain]);
 
-  const recommendedMode = getRecommendedMode();
+  // Use AI recommendation if available, fallback to static
+  const recommendedMode = aiRecommendation?.recommended_mode || getStaticRecommendation();
 
   useEffect(() => {
     setSelectedMode(currentMode);
   }, [currentMode]);
 
-  const handleModeSelect = (mode) => {
+  // Memoized mode selection handler
+  const handleModeSelect = useCallback((mode, isAIRecommended = false) => {
     setSelectedMode(mode);
     setIsOpen(false);
     if (onModeChange) {
-      onModeChange(mode, modes[mode]);
+      onModeChange(mode, {
+        ...modes[mode],
+        isAIRecommended,
+        confidence: aiRecommendation?.confidence,
+        reasoning: aiRecommendation?.reasoning
+      });
     }
-  };
+  }, [onModeChange, modes, aiRecommendation]);
+
+  // AI-powered mode recommendation using PerceptionAgent (debounced)
+  useEffect(() => {
+    if (!autoDetect || !userInput || userInput.trim().length < 20) return;
+
+    let mounted = true;
+    const timeout = setTimeout(() => {
+      const detectMode = async () => {
+        if (!mounted) return;
+        setIsDetecting(true);
+        try {
+          const response = await fetchWithAuth(`${API_BASE_URL}/api/agents/perception/recommend-mode`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+              text: userInput,
+              domain: currentDomain 
+            })
+          });
+
+          if (!mounted) return;
+          if (response.ok) {
+            const data = await response.json();
+            if (!mounted) return;
+            
+            const recommendation = data.mode_recommendation || data;
+            setAiRecommendation(recommendation);
+
+            // Auto-select recommended mode if confidence is high
+            if (recommendation.recommended_mode && recommendation.confidence > 0.7 && autoDetect) {
+              handleModeSelect(recommendation.recommended_mode, true);
+            }
+          }
+        } catch (error) {
+          if (mounted) console.error('Mode recommendation failed:', error);
+        } finally {
+          if (mounted) setIsDetecting(false);
+        }
+      };
+
+      detectMode();
+    }, 2000); // Wait 2 seconds after user stops typing
+
+    return () => {
+      mounted = false;
+      clearTimeout(timeout);
+    };
+  }, [userInput, currentDomain, autoDetect, handleModeSelect]);
 
   const MetricBar = ({ label, value, color }) => (
     <div className="flex items-center text-xs">
@@ -145,6 +207,14 @@ const ModeSelector = ({
             </div>
           </div>
           <div className="flex items-center space-x-2">
+            {isDetecting && (
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-purple-400"></div>
+            )}
+            {aiRecommendation && aiRecommendation.confidence > 0.7 && (
+              <div className="text-xs px-2 py-1 bg-green-500/20 text-green-400 rounded-full">
+                AI: {Math.round(aiRecommendation.confidence * 100)}%
+              </div>
+            )}
             {recommendedMode === selectedMode && (
               <div className="text-xs px-2 py-1 bg-green-500/20 text-green-400 rounded-full">
                 ✨ Recommended

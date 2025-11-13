@@ -988,6 +988,160 @@ JSON only, no explanation:"""
         
         return warnings
 
+    async def recommend_mode_llm(self, text: str, current_domain: str = None) -> Dict[str, Any]:
+        """
+        PRODUCTION: Recommend AI generation mode using LLM analysis
+        Analyzes text complexity, creativity needs, and domain to suggest optimal mode
+        
+        Modes: conservative, balanced, exploratory, focused, creative
+        """
+        if not self.llm_provider:
+            logger.warning("No LLM provider available for mode recommendation, using heuristics")
+            return self.recommend_mode_heuristic(text, current_domain)
+        
+        try:
+            prompt = f"""Analyze this text and recommend the best AI generation mode.
+
+Text to analyze:
+{text[:1000]}
+
+Domain: {current_domain or 'unknown'}
+
+Available modes:
+- conservative: Safe, predictable (temp=0.3, creativity=0.2) - for formal/factual content
+- balanced: Balanced approach (temp=0.5, creativity=0.5) - general purpose
+- exploratory: Creative experiments (temp=0.8, creativity=0.8) - for brainstorming
+- focused: Precise, targeted (temp=0.2, creativity=0.1) - for technical/specific tasks
+- creative: Maximum creativity (temp=0.9, creativity=0.9) - for artistic/story content
+
+Analyze:
+1. Text complexity and formality
+2. Creative vs technical language
+3. User intent (storytelling, documentation, analysis, etc.)
+4. Domain requirements
+
+Return JSON:
+{{
+  "recommended_mode": "mode_name",
+  "confidence": 0.0-1.0,
+  "reasoning": "brief explanation",
+  "alternative_mode": "second_best_option"
+}}"""
+
+            response = await self.llm_provider.generate(
+                prompt=prompt,
+                temperature=0.3,  # Low temp for consistent recommendations
+                max_tokens=300
+            )
+            
+            response_text = response.strip()
+            
+            # Try to parse JSON response
+            try:
+                # Try direct JSON parse
+                if response_text.startswith('{'):
+                    result = json.loads(response_text)
+                else:
+                    # Extract JSON from markdown code blocks or text
+                    json_match = re.search(r'\{[^\}]+\}', response_text, re.DOTALL)
+                    if json_match:
+                        result = json.loads(json_match.group(0))
+                    else:
+                        raise ValueError("No JSON found in response")
+                
+                # Validate mode
+                valid_modes = ['conservative', 'balanced', 'exploratory', 'focused', 'creative']
+                recommended = result.get('recommended_mode', 'balanced')
+                if recommended not in valid_modes:
+                    recommended = 'balanced'
+                
+                logger.info(f"✅ LLM mode recommendation: {recommended} (confidence: {result.get('confidence', 0):.2f})")
+                
+                return {
+                    "recommended_mode": recommended,
+                    "confidence": float(result.get('confidence', 0.7)),
+                    "reasoning": result.get('reasoning', ''),
+                    "alternative_mode": result.get('alternative_mode', 'balanced'),
+                    "detected_at": datetime.now().isoformat(),
+                    "method": "llm"
+                }
+                
+            except (json.JSONDecodeError, ValueError) as e:
+                logger.warning(f"LLM mode recommendation JSON parse error: {e}, using heuristics")
+        
+        except Exception as e:
+            logger.warning(f"LLM mode recommendation failed: {e}, using heuristics")
+        
+        # Fallback to heuristics
+        return self.recommend_mode_heuristic(text, current_domain)
+    
+    def recommend_mode_heuristic(self, text: str, current_domain: str = None) -> Dict[str, Any]:
+        """
+        Fallback heuristic mode recommendation based on text analysis and domain
+        """
+        text_lower = text.lower()
+        word_count = len(text.split())
+        
+        # Domain-based recommendations
+        domain_mode_map = {
+            'story': 'creative',
+            'screenplay': 'balanced',
+            'technical': 'focused',
+            'academic': 'conservative',
+            'business': 'balanced',
+            'marketing': 'exploratory'
+        }
+        
+        # Start with domain recommendation
+        recommended = domain_mode_map.get(current_domain, 'balanced')
+        confidence = 0.6
+        reasoning = f"Based on {current_domain} domain"
+        
+        # Adjust based on text characteristics
+        creative_indicators = ['story', 'character', 'scene', 'dialogue', 'imagine', 'fantasy', 'adventure']
+        technical_indicators = ['function', 'algorithm', 'implement', 'technical', 'specification', 'documentation']
+        formal_indicators = ['therefore', 'however', 'furthermore', 'consequently', 'research', 'study']
+        
+        creative_score = sum(1 for indicator in creative_indicators if indicator in text_lower)
+        technical_score = sum(1 for indicator in technical_indicators if indicator in text_lower)
+        formal_score = sum(1 for indicator in formal_indicators if indicator in text_lower)
+        
+        # Override domain recommendation if strong signals
+        if creative_score > 3 and creative_score > technical_score:
+            recommended = 'creative'
+            confidence = 0.75
+            reasoning = "High creative language detected"
+        elif technical_score > 3 and technical_score > creative_score:
+            recommended = 'focused'
+            confidence = 0.75
+            reasoning = "Technical content detected"
+        elif formal_score > 3:
+            recommended = 'conservative'
+            confidence = 0.7
+            reasoning = "Formal academic language detected"
+        
+        # Short text = focused, long creative text = exploratory
+        if word_count < 50:
+            if recommended == 'creative':
+                recommended = 'focused'
+                reasoning += " (short text, using focused mode)"
+        elif word_count > 500 and creative_score > 0:
+            if recommended in ['balanced', 'creative']:
+                recommended = 'exploratory'
+                confidence = 0.65
+                reasoning = "Long creative text suggests exploratory approach"
+        
+        logger.info(f"ℹ️  Heuristic mode recommendation: {recommended} (confidence: {confidence:.2f})")
+        
+        return {
+            "recommended_mode": recommended,
+            "confidence": confidence,
+            "reasoning": reasoning,
+            "alternative_mode": 'balanced',
+            "detected_at": datetime.now().isoformat(),
+            "method": "heuristic"
+        }
+
     def _generate_summary(self, sentences: List[str]) -> str:
         """Generate a simple summary of the text"""
         if not sentences:
@@ -1022,6 +1176,172 @@ JSON only, no explanation:"""
             summary_sentences.append(sentences[-1])
 
         return " ".join(summary_sentences)[:500]  # Limit to 500 characters
+
+    async def recommend_mode_llm(self, text: str, domain: str = None) -> Dict[str, Any]:
+        """
+        Recommend AI mode (conservative, balanced, exploratory, focused, creative) using LLM analysis
+        Analyzes text complexity, creativity needs, and user intent
+        Falls back to rule-based recommendations if LLM unavailable
+        """
+        # Use LLM if available
+        if hasattr(self, 'llm_provider') and self.llm_provider:
+            try:
+                domain_context = f" The content domain is: {domain}." if domain else ""
+                
+                prompt = f"""Analyze this text and recommend the best AI generation mode. Consider:
+- Text complexity and technical depth
+- Creative vs analytical language
+- Need for precision vs exploration
+- Writing style and tone
+
+Text: "{text[:500]}"
+{domain_context}
+
+Available modes:
+- conservative: Safe, predictable, proven approaches (temp: 0.3)
+- balanced: Balance creativity and consistency (temp: 0.5)
+- exploratory: Creative, experimental, novel solutions (temp: 0.8)
+- focused: Highly specific, precise, targeted (temp: 0.2)
+- creative: Maximum creativity for stories/art (temp: 0.9)
+
+Return ONLY this JSON structure (no other text):
+{{
+  "recommended_mode": "<one of: conservative, balanced, exploratory, focused, creative>",
+  "confidence": 0.85,
+  "reasoning": "Brief explanation of why this mode is recommended",
+  "alternative_modes": ["mode2", "mode3"],
+  "text_analysis": {{
+    "complexity": "simple|moderate|complex",
+    "creativity_level": "low|medium|high",
+    "technical_depth": "low|medium|high",
+    "tone": "formal|casual|creative|technical"
+  }}
+}}
+
+JSON only, no explanation:"""
+
+                response = await self.llm_provider.generate(
+                    prompt=prompt,
+                    max_tokens=400,
+                    temperature=0.1,
+                )
+                
+                # Parse LLM response
+                import json
+                response_text = response.get("text", "").strip()
+                
+                # Remove markdown code blocks if present
+                response_text = re.sub(r'```json\s*', '', response_text)
+                response_text = re.sub(r'```\s*$', '', response_text)
+                response_text = response_text.strip()
+                
+                # Try to extract JSON from response
+                if response_text.startswith("{"):
+                    result = json.loads(response_text)
+                    logger.info(f"✅ LLM mode recommendation: {result.get('recommended_mode')} (confidence: {result.get('confidence')})")
+                    return result
+                else:
+                    # Try to find JSON in the response
+                    json_match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', response_text, re.DOTALL)
+                    if json_match:
+                        result = json.loads(json_match.group(0))
+                        logger.info(f"✅ LLM mode recommendation (extracted): {result.get('recommended_mode')}")
+                        return result
+                    
+                logger.warning(f"LLM mode response was not valid JSON: {response_text[:100]}, falling back to rule-based")
+                
+            except json.JSONDecodeError as e:
+                logger.warning(f"LLM mode response JSON parse error: {e}, falling back to rule-based")
+            except Exception as e:
+                logger.warning(f"LLM mode recommendation failed: {e}, falling back to rule-based")
+        
+        # Fallback to rule-based recommendations
+        return self.recommend_mode_rules(text, domain)
+    
+    def recommend_mode_rules(self, text: str, domain: str = None) -> Dict[str, Any]:
+        """
+        Rule-based mode recommendation using heuristics and pattern matching
+        """
+        text_lower = text.lower()
+        
+        # Analyze text characteristics
+        word_count = len(text.split())
+        unique_words = len(set(text_lower.split()))
+        lexical_diversity = unique_words / word_count if word_count > 0 else 0
+        
+        # Check for technical indicators
+        technical_patterns = r'\b(function|class|method|algorithm|data|analysis|system|process|implement|configure)\b'
+        technical_count = len(re.findall(technical_patterns, text_lower))
+        
+        # Check for creative indicators
+        creative_patterns = r'\b(imagine|story|character|scene|emotion|beautiful|dramatic|mysterious|adventure)\b'
+        creative_count = len(re.findall(creative_patterns, text_lower))
+        
+        # Check for formal/academic indicators
+        formal_patterns = r'\b(research|study|analysis|therefore|however|furthermore|conclusion|hypothesis)\b'
+        formal_count = len(re.findall(formal_patterns, text_lower))
+        
+        # Domain-based recommendations
+        domain_mode_map = {
+            'story': 'creative',
+            'screenplay': 'balanced',
+            'technical': 'focused',
+            'academic': 'conservative',
+            'business': 'balanced',
+            'marketing': 'exploratory'
+        }
+        
+        # Calculate scores for each mode
+        mode_scores = {
+            'creative': creative_count * 2 + (1 if lexical_diversity > 0.7 else 0),
+            'exploratory': creative_count + (1 if lexical_diversity > 0.6 else 0),
+            'balanced': 1,  # Baseline
+            'focused': technical_count * 2 + (1 if word_count < 100 else 0),
+            'conservative': formal_count * 2 + (1 if lexical_diversity < 0.5 else 0)
+        }
+        
+        # Apply domain influence if available
+        if domain and domain in domain_mode_map:
+            domain_preference = domain_mode_map[domain]
+            mode_scores[domain_preference] += 3
+        
+        # Get recommended mode
+        recommended_mode = max(mode_scores, key=mode_scores.get)
+        max_score = mode_scores[recommended_mode]
+        total_score = sum(mode_scores.values())
+        confidence = max_score / total_score if total_score > 0 else 0.5
+        
+        # Get alternative modes
+        sorted_modes = sorted(mode_scores.items(), key=lambda x: x[1], reverse=True)
+        alternative_modes = [mode for mode, score in sorted_modes[1:3]]
+        
+        # Determine text analysis
+        complexity = "complex" if word_count > 200 else "moderate" if word_count > 50 else "simple"
+        creativity_level = "high" if creative_count > 2 else "medium" if creative_count > 0 else "low"
+        technical_depth = "high" if technical_count > 3 else "medium" if technical_count > 0 else "low"
+        
+        if formal_count > 2:
+            tone = "formal"
+        elif technical_count > 2:
+            tone = "technical"
+        elif creative_count > 2:
+            tone = "creative"
+        else:
+            tone = "casual"
+        
+        return {
+            "recommended_mode": recommended_mode,
+            "confidence": min(confidence, 0.95),
+            "reasoning": f"Based on {complexity} text with {creativity_level} creativity and {technical_depth} technical depth",
+            "alternative_modes": alternative_modes,
+            "text_analysis": {
+                "complexity": complexity,
+                "creativity_level": creativity_level,
+                "technical_depth": technical_depth,
+                "tone": tone
+            },
+            "method": "rule-based"
+        }
 
 
 async def create_perception_agent(config: Dict[str, Any]) -> PerceptionAgent:
