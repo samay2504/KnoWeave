@@ -19,6 +19,7 @@ const DomainSelector = ({
   const [selectedDomain, setSelectedDomain] = useState(currentDomain);
   const [isDetecting, setIsDetecting] = useState(false);
   const [detectionResult, setDetectionResult] = useState(null);
+  const [lastDetectedContent, setLastDetectedContent] = useState('');
 
   // Domain configurations matching backend TOPIC_DOMAINS (memoized to prevent re-creation)
   const domains = useMemo(() => ({
@@ -101,6 +102,13 @@ const DomainSelector = ({
   // AI-powered domain detection using PerceptionAgent (debounced)
   useEffect(() => {
     if (!autoDetect || !userInput || userInput.trim().length < 20) return;
+    
+    // PRODUCTION FIX: Skip if content hasn't meaningfully changed (ignore whitespace/case)
+    const normalizedInput = userInput.trim().toLowerCase();
+    const normalizedLast = lastDetectedContent.trim().toLowerCase();
+    if (normalizedInput === normalizedLast) {
+      return;
+    }
 
     let mounted = true;
     const timeout = setTimeout(() => {
@@ -128,6 +136,7 @@ const DomainSelector = ({
             };
             
             setDetectionResult(result);
+            setLastDetectedContent(userInput);
 
             // Auto-select detected domain if confidence is high
             if (result.domain && result.confidence > 0.6 && autoDetect) {
@@ -148,7 +157,7 @@ const DomainSelector = ({
       mounted = false;
       clearTimeout(timeout);
     };
-  }, [userInput, autoDetect, handleDomainSelect]);
+  }, [userInput, autoDetect, handleDomainSelect, lastDetectedContent]);
 
   return (
     <div className={`relative ${className}`}>

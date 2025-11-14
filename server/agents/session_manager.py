@@ -1322,6 +1322,10 @@ class SessionManager:
         # Session tracking
         self.active_sessions: Dict[str, Dict[str, Any]] = {}
         self.session_cooldowns: Dict[str, datetime] = {}
+        
+        # PRODUCTION FIX: Track mode per session, not globally
+        self.session_modes: Dict[str, str] = {}  # session_id -> mode
+        self.default_mode = "balanced"
 
         # Policy defaults from blueprint
         self.default_policy = {
@@ -1348,6 +1352,16 @@ class SessionManager:
         # Clear active sessions
         self.active_sessions.clear()
         self.session_cooldowns.clear()
+        self.session_modes.clear()
+    
+    def set_session_mode(self, session_id: str, mode: str) -> None:
+        """Set AI mode for a specific session"""
+        self.session_modes[session_id] = mode
+        logger.debug(f"Session {session_id} mode set to: {mode}")
+    
+    def get_session_mode(self, session_id: str) -> str:
+        """Get AI mode for a specific session"""
+        return self.session_modes.get(session_id, self.default_mode)
         logger.info("Session Manager cleanup completed")
 
     # ===== PRODUCTION-GRADE SESSION API =====

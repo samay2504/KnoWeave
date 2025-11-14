@@ -6,8 +6,14 @@ Extracts surface features: tokens, POS, NER, coref, SRL, tone
 import re
 import logging
 import asyncio
+import time
 from typing import Dict, Any, List, Optional, Tuple
 from dataclasses import dataclass
+
+# PRODUCTION FIX: Simple cache to prevent repeated LLM calls
+_domain_cache: Dict[str, Tuple[str, float, float]] = {}  # content_hash -> (domain, confidence, timestamp)
+_mode_cache: Dict[str, Tuple[str, float, float]] = {}  # content_hash -> (mode, confidence, timestamp)
+CACHE_TTL = 300  # 5 minutes cache
 
 # Use production-ready import system
 try:
@@ -346,19 +352,22 @@ class PerceptionAgent:
         if not self.initialized:
             await self.initialize()
 
-        # Extract text from multiple possible sources
+        # PRODUCTION FIX: Extract text from multiple possible sources in priority order
         text = (
-            workspace.get("topic_content", "") or 
+            workspace.get("story_so_far", "") or  # Story content field
+            workspace.get("topic_content", "") or  # Generic topic content
             workspace.get("content", "") or 
-            agent_config.get("content", "") or
+            agent_config.get("content", "") or 
             agent_config.get("input_text", "") or
             workspace.get("input_text", "")
         )
         
         if not text.strip():
-            logger.debug(f"Perception agent: No text found in workspace keys: {list(workspace.keys())} or agent_config keys: {list(agent_config.keys())}")
+            logger.debug(f"⚠️ Perception agent: No text found in workspace keys: {list(workspace.keys())[:10]} or agent_config keys: {list(agent_config.keys())}")
             return self._empty_analysis()
-
+        
+        logger.info(f"📝 Perception analyzing {len(text)} characters from workspace")
+        
         try:
             # Extract features based on available NLP library
             if self.nlp_type == "spacy":
@@ -371,7 +380,7 @@ class PerceptionAgent:
                 result = await self._analyze_with_patterns(text)
 
             # Convert PerceptionOutput to blueprint format
-            output = self._convert_to_blueprint_format(result, text)
+            output = await self._convert_to_blueprint_format(result, text)
             # --- Strict post-processing: filter output for schema compliance ---
             try:
                 from server.utils.llm_output_filter import filter_llm_output
@@ -385,7 +394,7 @@ class PerceptionAgent:
             logger.error(f"Text analysis failed: {e}")
             # Fallback to pattern-based analysis
             result = await self._analyze_with_patterns(text)
-            output = self._convert_to_blueprint_format(result, text)
+            output = await self._convert_to_blueprint_format(result, text)
             try:
                 from server.utils.llm_output_filter import filter_llm_output
                 from server.utils.schemas import PerceptionOutput
@@ -394,7 +403,7 @@ class PerceptionAgent:
                 logger.warning(f"PerceptionAgent post-processing failed (fallback): {e}")
             return output
 
-    def _convert_to_blueprint_format(
+    async def _convert_to_blueprint_format(
         self, perception_output: PerceptionOutput, text: str
     ) -> Dict[str, Any]:
         """Convert PerceptionOutput to blueprint-specified format"""
@@ -410,9 +419,18 @@ class PerceptionAgent:
                         "confidence": entity.get("confidence", 0.8),
                     }
                 )
+        
+        # PRODUCTION FIX: Use LLM for character extraction if no characters detected and LLM available
+        if len(characters) == 0 and self.llm_provider:
+            try:
+                llm_characters = await self._extract_characters_with_llm(text)
+                characters.extend(llm_characters)
+                logger.info(f"🤖 LLM extracted {len(llm_characters)} characters from text")
+            except Exception as llm_err:
+                logger.debug(f"LLM character extraction skipped: {llm_err}")
 
         # Extract events (simple approach - sentences with action verbs)
-        events = self._extract_events_from_text(text)
+        events = await self._extract_events_from_text(text)
 
         return {
             "tokens": perception_output.tokens,
@@ -433,9 +451,21 @@ class PerceptionAgent:
             "metadata": perception_output.metadata,
         }
 
-    def _extract_events_from_text(self, text: str) -> List[Dict[str, Any]]:
+    async def _extract_events_from_text(self, text: str) -> List[Dict[str, Any]]:
         """Extract events from text for blueprint format"""
         events = []
+        
+        # PRODUCTION FIX: Use LLM for event extraction if available
+        if self.llm_provider:
+            try:
+                llm_events = await self._extract_events_with_llm(text)
+                if llm_events:
+                    logger.info(f"🤖 LLM extracted {len(llm_events)} events from text")
+                    return llm_events
+            except Exception as llm_err:
+                logger.debug(f"LLM event extraction skipped, using pattern fallback: {llm_err}")
+        
+        # Fallback: Pattern-based event extraction
         sentences = re.split(r"[.!?]+", text)
 
         action_verbs = {
@@ -481,6 +511,85 @@ class PerceptionAgent:
                 )
 
         return events[:10]  # Limit to top 10 events
+
+    async def _extract_characters_with_llm(self, text: str) -> List[Dict[str, Any]]:
+        """PRODUCTION: Extract characters using LLM for better detection"""
+        if not self.llm_provider:
+            return []
+        
+        try:
+            prompt = f"""Analyze this text and extract ALL characters/people mentioned, even if unnamed.
+For each character, provide:
+1. Name (or description like "homeless man", "the woman", etc.)
+2. Key traits (list of adjectives/descriptions)
+3. How many times they appear/are mentioned
+
+Text: {text[:1000]}
+
+Return JSON array: [{{"name": "...", "traits": ["..."], "mentions": 1, "confidence": 0.9}}]"""
+
+            response = await self.llm_provider.generate(
+                prompt=prompt,
+                temperature=0.2,
+                max_tokens=500
+            )
+            
+            # Parse JSON response
+            import json
+            import re
+            
+            # Extract JSON from response (handle markdown code blocks)
+            json_match = re.search(r'\[.*\]', response, re.DOTALL)
+            if json_match:
+                characters_data = json.loads(json_match.group())
+                logger.info(f"✅ LLM extracted {len(characters_data)} characters")
+                return characters_data
+            else:
+                logger.warning("⚠️ Could not parse LLM character extraction response")
+                return []
+                
+        except Exception as e:
+            logger.error(f"❌ LLM character extraction failed: {e}")
+            return []
+    
+    async def _extract_events_with_llm(self, text: str) -> List[Dict[str, Any]]:
+        """PRODUCTION: Extract key events/facts using LLM"""
+        if not self.llm_provider:
+            return []
+        
+        try:
+            prompt = f"""Analyze this text and extract key events, facts, or plot points.
+For each event:
+1. Brief summary (1 sentence)
+2. Key actors/subjects involved
+3. Confidence level (0.0-1.0)
+
+Text: {text[:1000]}
+
+Return JSON array: [{{"summary": "...", "actors": ["..."], "confidence": 0.9}}]"""
+
+            response = await self.llm_provider.generate(
+                prompt=prompt,
+                temperature=0.2,
+                max_tokens=500
+            )
+            
+            # Parse JSON response
+            import json
+            import re
+            
+            json_match = re.search(r'\[.*\]', response, re.DOTALL)
+            if json_match:
+                events_data = json.loads(json_match.group())
+                logger.info(f"✅ LLM extracted {len(events_data)} events")
+                return events_data[:10]  # Limit to 10 events
+            else:
+                logger.warning("⚠️ Could not parse LLM event extraction response")
+                return []
+                
+        except Exception as e:
+            logger.error(f"❌ LLM event extraction failed: {e}")
+            return []
 
     def _empty_analysis(self) -> Dict[str, Any]:
         """Return empty analysis structure for blueprint compliance"""
@@ -773,6 +882,25 @@ class PerceptionAgent:
         Detect domain and role from text using LLM for more accurate results
         Falls back to pattern matching if LLM is not available
         """
+        # PRODUCTION FIX: Cache check to prevent 50+ redundant LLM calls
+        import hashlib
+        content_hash = hashlib.md5(text[:500].encode()).hexdigest()
+        current_time = time.time()
+        
+        if content_hash in _domain_cache:
+            cached_result, cached_confidence, cached_time = _domain_cache[content_hash]
+            if current_time - cached_time < CACHE_TTL:
+                logger.info(f"🔄 Using cached domain detection: {cached_result} (confidence: {cached_confidence})")
+                return {
+                    "topic_family": cached_result,
+                    "domain_confidence": cached_confidence,
+                    "topic_role": "general",
+                    "topic_goal_suggestions": [],
+                    "audience_level": "general",
+                    "constraints": [],
+                    "warnings": []
+                }
+        
         # Use LLM if available
         if hasattr(self, 'llm_provider') and self.llm_provider:
             try:
@@ -822,6 +950,10 @@ JSON only, no explanation:"""
                 if response_text.startswith("{"):
                     result = json.loads(response_text)
                     logger.info(f"✅ LLM domain detection: {result.get('topic_family')} (confidence: {result.get('domain_confidence')})")
+                    
+                    # PRODUCTION FIX: Cache successful result
+                    _domain_cache[content_hash] = (result.get('topic_family'), result.get('domain_confidence', 0.95), current_time)
+                    
                     return result
                 else:
                     # Try to find JSON in the response
@@ -829,6 +961,10 @@ JSON only, no explanation:"""
                     if json_match:
                         result = json.loads(json_match.group(0))
                         logger.info(f"✅ LLM domain detection (extracted): {result.get('topic_family')}")
+                        
+                        # PRODUCTION FIX: Cache successful result
+                        _domain_cache[content_hash] = (result.get('topic_family'), result.get('domain_confidence', 0.95), current_time)
+                        
                         return result
                     
                 logger.warning(f"LLM response was not valid JSON: {response_text[:100]}, falling back to pattern matching")
@@ -1195,6 +1331,23 @@ Return JSON:
         Analyzes text complexity, creativity needs, and user intent
         Falls back to rule-based recommendations if LLM unavailable
         """
+        # PRODUCTION FIX: Cache check to prevent 50+ redundant LLM calls
+        import hashlib
+        cache_key = hashlib.md5(f"{text[:500]}_{domain}".encode()).hexdigest()
+        current_time = time.time()
+        
+        if cache_key in _mode_cache:
+            cached_mode, cached_confidence, cached_time = _mode_cache[cache_key]
+            if current_time - cached_time < CACHE_TTL:
+                logger.info(f"🔄 Using cached mode recommendation: {cached_mode} (confidence: {cached_confidence})")
+                return {
+                    "recommended_mode": cached_mode,
+                    "confidence": cached_confidence,
+                    "reasoning": "Cached recommendation",
+                    "alternative_modes": [],
+                    "text_analysis": {}
+                }
+        
         # Use LLM if available
         if hasattr(self, 'llm_provider') and self.llm_provider:
             try:
@@ -1261,6 +1414,10 @@ JSON only, no explanation:"""
                 if response_text.startswith("{"):
                     result = json.loads(response_text)
                     logger.info(f"✅ LLM mode recommendation: {result.get('recommended_mode')} (confidence: {result.get('confidence')})")
+                    
+                    # PRODUCTION FIX: Cache successful result
+                    _mode_cache[cache_key] = (result.get('recommended_mode'), result.get('confidence', 0.85), current_time)
+                    
                     return result
                 else:
                     # Try to find JSON in the response
@@ -1268,6 +1425,10 @@ JSON only, no explanation:"""
                     if json_match:
                         result = json.loads(json_match.group(0))
                         logger.info(f"✅ LLM mode recommendation (extracted): {result.get('recommended_mode')}")
+                        
+                        # PRODUCTION FIX: Cache successful result
+                        _mode_cache[cache_key] = (result.get('recommended_mode'), result.get('confidence', 0.85), current_time)
+                        
                         return result
                     
                 logger.warning(f"LLM mode response was not valid JSON: {response_text[:100]}, falling back to rule-based")

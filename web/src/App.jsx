@@ -157,6 +157,12 @@ const Dashboard = ({ user }) => {
    */
   const handleDomainChange = async (newDomain, domainConfig) => {
     try {
+      // PRODUCTION FIX: Skip if domain hasn't changed
+      if (currentDomain === newDomain) {
+        console.debug('⚡ Domain unchanged, skipping update');
+        return;
+      }
+      
       setCurrentDomain(newDomain);
       
       // Notify backend of domain change for session tracking
@@ -178,7 +184,8 @@ const Dashboard = ({ user }) => {
       
       // Auto-switch to preferred mode for domain
       if (domainConfig && domainConfig.preferredMode && domainConfig.preferredMode !== currentMode) {
-        await updateMode(domainConfig.preferredMode);
+        const activeSessionId = currentSessionId || sessionId;
+        await updateMode(domainConfig.preferredMode, null, activeSessionId);
       }
       
       console.log(`Domain changed to: ${newDomain}`, domainConfig?.isAIDetected ? '(AI detected)' : '(manual)');
@@ -192,7 +199,8 @@ const Dashboard = ({ user }) => {
    */
   const handleModeChange = async (newMode, modeConfig) => {
     try {
-      await updateMode(newMode, modeConfig);
+      const activeSessionId = currentSessionId || sessionId;
+      await updateMode(newMode, modeConfig, activeSessionId);
       console.log(`Mode changed to: ${newMode}`);
     } catch (err) {
       console.error('Failed to update mode:', err);

@@ -15,9 +15,9 @@ export const useAIMode = (initialMode = 'balanced') => {
   const API_BASE = `http://localhost:${BACKEND_PORT}/api`;
 
   /**
-   * Update the current AI mode and sync with backend
+   * Update the current AI mode and sync with backend (session-aware)
    */
-  const updateMode = useCallback(async (newMode, config = null) => {
+  const updateMode = useCallback(async (newMode, config = null, sessionId = null) => {
     setIsLoading(true);
     setError(null);
 
@@ -28,6 +28,16 @@ export const useAIMode = (initialMode = 'balanced') => {
         setModeConfig(config);
       }
 
+      // PRODUCTION FIX: Include session_id for per-session mode tracking
+      const requestBody = {
+        mode: newMode,
+        config: config,
+      };
+      
+      if (sessionId) {
+        requestBody.session_id = sessionId;
+      }
+
       // Sync with backend PTG system
       const response = await fetch(`${API_BASE}/session/mode`, {
         method: 'POST',
@@ -35,10 +45,7 @@ export const useAIMode = (initialMode = 'balanced') => {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          mode: newMode,
-          config: config,
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {

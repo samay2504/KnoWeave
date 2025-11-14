@@ -37,6 +37,7 @@ mode_router = APIRouter(prefix="/api/session", tags=["mode"])
 # Pydantic models for request/response
 class ModeUpdateRequest(BaseModel):
     mode: str = Field(..., description="Mode to set (conservative, balanced, exploratory, focused)")
+    session_id: Optional[str] = Field(None, description="Session ID for per-session mode tracking")
     config: Optional[Dict[str, Any]] = Field(None, description="Optional mode configuration")
 
 class ModeUpdateResponse(BaseModel):
@@ -90,9 +91,12 @@ async def update_mode(
     session_manager: SessionManager = Depends(get_session_manager)
 ):
     """
-    Update the current AI interaction mode
+    Update the current AI interaction mode for a session
     """
     try:
+        # Get session_id from request (if not provided, use global default)
+        session_id = request.session_id if hasattr(request, 'session_id') else None
+        
         # PRODUCTION FIX: Map frontend mode aliases to backend modes
         mode_aliases = {
             'creative': 'exploratory',  # Frontend uses 'creative', backend uses 'exploratory'
@@ -109,8 +113,28 @@ async def update_mode(
                 detail=f"Invalid mode. Must be one of: {list(PTG_MODES.keys())}"
             )
 
-        # Update session manager mode
-        session_manager.current_mode = actual_mode
+        # PRODUCTION FIX: Check current mode to skip redundant updates
+        if session_id:
+            current_mode = session_manager.get_session_mode(session_id)
+            if current_mode == actual_mode:
+                logger.debug(f"⚡ Session {session_id} mode already set to '{actual_mode}', skipping update")
+                mode_config = PTG_MODES[actual_mode].copy()
+                if request.config:
+                    mode_config.update(request.config)
+                return ModeUpdateResponse(
+                    status="success",
+                    mode=actual_mode,
+                    config=mode_config,
+                    timestamp=datetime.now()
+                )
+            
+            # Set mode for specific session
+            session_manager.set_session_mode(session_id, actual_mode)
+            logger.info(f"Mode updated for session {session_id}: {request.mode} → {actual_mode}")
+        else:
+            # Fallback: Set global default mode if session_id not provided
+            session_manager.default_mode = actual_mode
+            logger.info(f"Default mode updated: {request.mode} → {actual_mode}")
         
         # Get mode configuration
         mode_config = PTG_MODES[actual_mode].copy()
@@ -157,13 +181,17 @@ async def get_available_modes():
 
 @mode_router.get("/mode")
 async def get_current_mode(
+    session_id: Optional[str] = None,
     session_manager: SessionManager = Depends(get_session_manager)
 ):
     """
-    Get the current AI interaction mode
+    Get the current AI interaction mode (optionally per-session)
     """
     try:
-        current_mode = getattr(session_manager, 'current_mode', 'balanced')
+        if session_id:
+            current_mode = session_manager.get_session_mode(session_id)
+        else:
+            current_mode = getattr(session_manager, 'default_mode', 'balanced')
         mode_config = PTG_MODES.get(current_mode, PTG_MODES['balanced'])
 
         return {

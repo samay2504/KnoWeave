@@ -20,6 +20,8 @@ const ModeSelector = ({
   const [selectedMode, setSelectedMode] = useState(currentMode);
   const [isDetecting, setIsDetecting] = useState(false);
   const [aiRecommendation, setAiRecommendation] = useState(null);
+  const [lastDetectedContent, setLastDetectedContent] = useState('');
+  const [lastDetectedDomain, setLastDetectedDomain] = useState('');
 
   // Blueprint-compliant mode configurations with cyber styling (memoized)
   const modes = useMemo(() => ({
@@ -111,6 +113,13 @@ const ModeSelector = ({
   // AI-powered mode recommendation using PerceptionAgent (debounced)
   useEffect(() => {
     if (!autoDetect || !userInput || userInput.trim().length < 20) return;
+    
+    // PRODUCTION FIX: Skip if content and domain haven't changed
+    const normalizedInput = userInput.trim().toLowerCase();
+    const normalizedLast = lastDetectedContent.trim().toLowerCase();
+    if (normalizedInput === normalizedLast && currentDomain === lastDetectedDomain) {
+      return;
+    }
 
     let mounted = true;
     const timeout = setTimeout(() => {
@@ -134,6 +143,8 @@ const ModeSelector = ({
             
             const recommendation = data.mode_recommendation || data;
             setAiRecommendation(recommendation);
+            setLastDetectedContent(userInput);
+            setLastDetectedDomain(currentDomain);
 
             // Auto-select recommended mode if confidence is high
             if (recommendation.recommended_mode && recommendation.confidence > 0.7 && autoDetect) {
@@ -154,7 +165,7 @@ const ModeSelector = ({
       mounted = false;
       clearTimeout(timeout);
     };
-  }, [userInput, currentDomain, autoDetect, handleModeSelect]);
+  }, [userInput, currentDomain, autoDetect, handleModeSelect, lastDetectedContent, lastDetectedDomain]);
 
   const MetricBar = ({ label, value, color }) => (
     <div className="flex items-center text-xs">

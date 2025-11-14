@@ -6,10 +6,15 @@ Main orchestrator implementing the blueprint specification
 import asyncio
 import json
 import logging
+import hashlib
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, Optional, TYPE_CHECKING
+
+# PRODUCTION FIX: Request deduplication cache
+_session_state_cache: Dict[str, Dict[str, Any]] = {}
+_cache_ttl = 300  # 5 minutes
 
 try:
     from fastapi import FastAPI, HTTPException, Depends, Request, WebSocket, APIRouter
@@ -563,6 +568,21 @@ def create_app() -> "FastAPI":
             if not text:
                 raise HTTPException(status_code=400, detail="text, content, or input_text required")
             
+            # PRODUCTION FIX: Deduplicate identical requests
+            request_hash = hashlib.md5(text.encode()).hexdigest()
+            cache_key = f"domain_{request_hash}"
+            
+            if cache_key in _session_state_cache:
+                cached = _session_state_cache[cache_key]
+                if (datetime.now() - cached['timestamp']).total_seconds() < _cache_ttl:
+                    logger.debug(f"⚡ Returning cached domain detection (hash: {request_hash[:8]}...)")
+                    return {
+                        "status": "success",
+                        "domain_info": cached['result'],
+                        "timestamp": datetime.now().isoformat(),
+                        "cached": True
+                    }
+            
             # Call LLM-powered detection if available, fallback to pattern matching
             perception_agent = agents["perception"]
             if hasattr(perception_agent, 'detect_domain_and_role_llm'):
@@ -571,6 +591,12 @@ def create_app() -> "FastAPI":
                 if 'domain_confidence' in result and 'confidence' not in result:
                     result['confidence'] = result['domain_confidence']
                 logger.info(f"✅ Domain detected via LLM: {result.get('topic_family')} (confidence: {result.get('confidence', 0.0):.2f})")
+                
+                # Cache the result
+                _session_state_cache[cache_key] = {
+                    'result': result,
+                    'timestamp': datetime.utcnow()
+                }
             elif hasattr(perception_agent, 'detect_domain_and_role'):
                 result = perception_agent.detect_domain_and_role(text)
                 logger.info(f"ℹ️  Domain detected via patterns: {result.get('topic_family')} (confidence: {result.get('confidence', 0.0):.2f})")
@@ -608,12 +634,33 @@ def create_app() -> "FastAPI":
             if not text:
                 raise HTTPException(status_code=400, detail="text, content, or input_text required")
             
+            # PRODUCTION FIX: Deduplicate identical requests
+            request_hash = hashlib.md5(f"{text}_{domain or 'none'}".encode()).hexdigest()
+            cache_key = f"mode_{request_hash}"
+            
+            if cache_key in _session_state_cache:
+                cached = _session_state_cache[cache_key]
+                if (datetime.now() - cached['timestamp']).total_seconds() < _cache_ttl:
+                    logger.debug(f"⚡ Returning cached mode recommendation (hash: {request_hash[:8]}...)")
+                    return {
+                        "status": "success",
+                        "mode_info": cached['result'],
+                        "timestamp": datetime.now().isoformat(),
+                        "cached": True
+                    }
+            
             # Call LLM-powered mode recommendation if available, fallback to rule-based
             perception_agent = agents["perception"]
             if hasattr(perception_agent, 'recommend_mode_llm'):
                 result = await perception_agent.recommend_mode_llm(text, domain)
                 method = result.get('method', 'llm')
                 logger.info(f"✅ Mode recommended via {method}: {result.get('recommended_mode')} (confidence: {result.get('confidence', 0):.2f})")
+                
+                # Cache the result
+                _session_state_cache[cache_key] = {
+                    'result': result,
+                    'timestamp': datetime.now()
+                }
             elif hasattr(perception_agent, 'recommend_mode_rules'):
                 result = perception_agent.recommend_mode_rules(text, domain)
                 logger.info(f"ℹ️  Mode recommended via rules: {result.get('recommended_mode')} (confidence: {result.get('confidence', 0):.2f})")
@@ -1299,12 +1346,21 @@ def create_app() -> "FastAPI":
 
             # Run agent pipeline with PTG-generated prompts (blueprint compliance)
             workspace_data = workspace.model_dump() if hasattr(workspace, 'model_dump') else workspace
-            topic = request.options.get("topic", "general")
-            topic_descriptor = request.options.get("context", "Content generation and analysis")
             
-            # PRODUCTION FIX: Use current domain from request, not old workspace metadata
-            # Frontend sends updated domain via request.options.topic after domain detection
-            content_domain = topic if topic != "general" else "story"
+            # PRODUCTION FIX: Get domain from workspace metadata (updated by domain detection)
+            # This ensures we use the AI-detected domain, not the old request option
+            workspace_dict = workspace.dict() if hasattr(workspace, 'dict') else workspace
+            workspace_metadata = workspace_dict.get("metadata", {})
+            if hasattr(workspace_metadata, 'dict'):
+                workspace_metadata = workspace_metadata.dict()
+            
+            # Priority: 1) metadata.content_domain (AI-detected), 2) workspace.topic, 3) request.options.topic
+            content_domain = workspace_metadata.get("content_domain") if isinstance(workspace_metadata, dict) else None
+            if not content_domain:
+                content_domain = workspace_dict.get("topic", "story")
+            
+            topic = content_domain  # Use detected domain as topic
+            topic_descriptor = request.options.get("context", "Content generation and analysis")
             
             # Also update workspace metadata to persist the domain change
             workspace_dict = workspace.dict() if hasattr(workspace, 'dict') else workspace
@@ -1411,7 +1467,7 @@ def create_app() -> "FastAPI":
                     planner_prompt = session_manager.ptg.generate_canonical_prompt(
                         agent_name="planner",
                         session_id=session_id,
-                        topic=content_domain,
+                        topic=workspace_data.get("topic_content", workspace_data.get("content", "")),  # CRITICAL FIX: Use actual content, not domain name
                         topic_descriptor=topic_descriptor,
                         input_data={
                             "max_branches": max_branches,
@@ -1419,7 +1475,7 @@ def create_app() -> "FastAPI":
                             "context": request.options.get("context", "")
                         },
                         mode=request.mode,
-                        topic_family=topic_family,
+                        topic_family=topic_family,  # This tells PTG what domain it is
                         topic_role=topic_role,
                         topic_goal=topic_goal
                     )
@@ -1788,7 +1844,18 @@ def create_app() -> "FastAPI":
                 workspace.model_dump() if hasattr(workspace, 'model_dump') else workspace.__dict__
             )
             
-            content = workspace_dict.get('topic_content', '')
+            # PRODUCTION FIX: Get content from correct field based on topic
+            topic = workspace_dict.get('topic', 'story')
+            if topic == 'story':
+                content = workspace_dict.get('story_so_far', '')
+            else:
+                content = workspace_dict.get('topic_content', '')
+            
+            # Fallback: try both fields if empty
+            if not content:
+                content = workspace_dict.get('topic_content', '') or workspace_dict.get('story_so_far', '')
+            
+            logger.debug(f"📊 Analytics content length: {len(content)} chars (topic: {topic})")
             
             # Get agents for LLM-based analysis
             perception_agent = agents.get("perception")
@@ -1971,9 +2038,22 @@ def create_app() -> "FastAPI":
             if not workspace:
                 raise HTTPException(status_code=404, detail="Session not found")
             
+            # PRODUCTION FIX: Skip redundant updates
+            # Safely get current domain (metadata might not have content_domain attribute)
+            metadata_dict = workspace.metadata.dict() if workspace.metadata else {}
+            current_domain = metadata_dict.get('content_domain')
+            if current_domain == domain:
+                logger.debug(f"⚡ Domain already set to '{domain}' for session {session_id}, skipping update")
+                return {
+                    "status": "success",
+                    "session_id": session_id,
+                    "domain": domain,
+                    "detection_method": "unchanged",
+                    "timestamp": datetime.now().isoformat()
+                }
+            
             # PRODUCTION FIX: Update metadata using Pydantic model.copy() with update
             # MetadataSchema doesn't support item assignment, must create new instance
-            metadata_dict = workspace.metadata.dict() if workspace.metadata else {}
             metadata_dict['content_domain'] = domain
             metadata_dict['domain_detection'] = {
                 'method': 'ai' if is_ai_detected else 'manual',
