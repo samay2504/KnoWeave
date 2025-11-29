@@ -111,9 +111,8 @@ class ServerConfig(BaseSettings):
     # LLM Provider settings
     llm_provider_preference: List[str] = Field(
         default=[
-            "google_genai",
             "groq",
-            "openrouter",
+            "google_genai",
             "huggingface",
             "openai",
             "fallback",

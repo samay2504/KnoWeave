@@ -223,9 +223,8 @@ class AsyncLLMProvider:
         provider_preference = self.config.get(
             "provider_preference",
             [
+                "groq",
                 "google_genai",
-                "groq", 
-                "openrouter",
                 "huggingface",
                 "openai",
                 "local",
