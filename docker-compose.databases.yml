@@ -12,6 +12,9 @@ services:
       - arangodb_apps:/var/lib/arangodb3-apps
     networks:
       - human-ai-network
+    # Prevents "container name already in use" errors
+    labels:
+      com.docker.compose.recreate: "true"
 
   # Optional: MongoDB for comparison
   mongodb:
@@ -28,6 +31,9 @@ services:
       - mongodb_data:/data/db
     networks:
       - human-ai-network
+    # Prevents "container name already in use" errors
+    labels:
+      com.docker.compose.recreate: "true"
 
 volumes:
   arangodb_data:

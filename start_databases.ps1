@@ -18,11 +18,32 @@ try {
     exit 1
 }
 
-# Start the database services
-Write-Host "🚀 Starting ArangoDB and MongoDB containers..." -ForegroundColor Cyan
+# Check if containers already exist
+Write-Host "🔍 Checking for existing containers..." -ForegroundColor Cyan
+
+$mongoRunning = docker ps --filter "name=mongodb" --format "{{.Names}}"
+$arangoRunning = docker ps --filter "name=arangodb" --format "{{.Names}}"
+
+if ($mongoRunning -eq "mongodb" -and $arangoRunning -eq "arangodb") {
+    Write-Host "✅ Both databases are already running!" -ForegroundColor Green
+    docker ps --filter "name=mongodb" --filter "name=arangodb" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+    exit 0
+}
+
+# Check if containers exist but are stopped
+$mongoExists = docker ps -a --filter "name=mongodb" --format "{{.Names}}"
+$arangoExists = docker ps -a --filter "name=arangodb" --format "{{.Names}}"
+
+if ($mongoExists -eq "mongodb" -or $arangoExists -eq "arangodb") {
+    Write-Host "🔄 Found existing containers, restarting them..." -ForegroundColor Yellow
+    docker compose -f docker-compose.databases.yml restart
+} else {
+    # Start the database services
+    Write-Host "🚀 Starting ArangoDB and MongoDB containers..." -ForegroundColor Cyan
+    docker compose -f docker-compose.databases.yml up -d
+}
 
 try {
-    docker-compose -f docker-compose.databases.yml up -d
     
     if ($LASTEXITCODE -eq 0) {
         Write-Host "✅ Database containers started successfully" -ForegroundColor Green
