@@ -1,0 +1,30 @@
+diff --git a/node_modules/react-scripts/config/webpackDevServer.config.js b/node_modules/react-scripts/config/webpackDevServer.config.js
+index 522a81b..c1ab8e1 100644
+--- a/node_modules/react-scripts/config/webpackDevServer.config.js
++++ b/node_modules/react-scripts/config/webpackDevServer.config.js
+@@ -24,6 +24,16 @@ const sockPort = process.env.WDS_SOCKET_PORT;
+ module.exports = function (proxy, allowedHost) {
+   const disableFirewall =
+     !proxy || process.env.DANGEROUSLY_DISABLE_HOST_CHECK === 'true';
++  
++  // PRODUCTION FIX: Handle undefined/empty allowedHost gracefully
++  // Hypothesis: allowedHost can be undefined when prepareUrls() returns lanUrlForConfig as undefined
++  // This was causing webpack-dev-server to reject [undefined] as invalid
++  // Solution: Filter out falsy values and fallback to 'all' for development
++  let normalizedAllowedHosts = 'all';
++  if (!disableFirewall && allowedHost) {
++    normalizedAllowedHosts = [allowedHost];
++  }
++  
+   return {
+     // WebpackDevServer 2.4.3 introduced a security fix that prevents remote
+     // websites from potentially accessing local content through DNS rebinding:
+@@ -43,7 +53,7 @@ module.exports = function (proxy, allowedHost) {
+     // really know what you're doing with a special environment variable.
+     // Note: ["localhost", ".localhost"] will support subdomains - but we might
+     // want to allow setting the allowedHosts manually for more complex setups
+-    allowedHosts: disableFirewall ? 'all' : [allowedHost],
++    allowedHosts: normalizedAllowedHosts,
+     headers: {
+       'Access-Control-Allow-Origin': '*',
+       'Access-Control-Allow-Methods': '*',
