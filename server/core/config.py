@@ -78,7 +78,7 @@ class DynamicConfig(BaseSettings):
     google_api_key: Optional[str] = Field(default=None, env="GOOGLE_API_KEY") 
     groq_api_key: Optional[str] = Field(default=None, env="GROQ_API_KEY")
     openrouter_api_key: Optional[str] = Field(default=None, env="OPENROUTER_API_KEY")
-    llm_provider_preference: str = Field(default='["google_genai", "groq", "openrouter", "openai", "fallback"]', env="LLM_PROVIDER_PREFERENCE")
+    llm_provider_preference: str = Field(default='["groq", "google_genai", "huggingface", "openai", "fallback"]', env="LLM_PROVIDER_PREFERENCE")
     
     # Logging
     log_level: str = Field(default="INFO", env="LOG_LEVEL")

@@ -1,0 +1,7 @@
+{"timestamp": "2025-11-29T12:29:44.669593", "session_id": "session_7b56c54e46af", "agent_name": "perception", "topic": "education", "topic_family": "education", "mode": "on_demand", "few_shot_count": 1, "prompt_length": 6425}
+{"timestamp": "2025-11-29T12:29:44.674289", "session_id": "session_7b56c54e46af", "agent_name": "graph_manager", "topic": "education", "topic_family": "education", "mode": "on_demand", "few_shot_count": 0, "prompt_length": 4853}
+{"timestamp": "2025-11-29T12:29:46.154741", "session_id": "session_7b56c54e46af", "agent_name": "planner", "topic": null, "topic_family": "education", "mode": "on_demand", "few_shot_count": 1, "prompt_length": 9330}
+{"timestamp": "2025-11-29T12:29:47.682600", "session_id": "session_7b56c54e46af", "agent_name": "verifier", "topic": "education", "topic_family": "education", "mode": "on_demand", "few_shot_count": 0, "prompt_length": 7741}
+{"timestamp": "2025-11-29T12:29:49.339838", "session_id": "session_7b56c54e46af", "agent_name": "verifier", "topic": "education", "topic_family": "education", "mode": "on_demand", "few_shot_count": 0, "prompt_length": 7758}
+{"timestamp": "2025-11-29T12:29:49.342844", "session_id": "session_7b56c54e46af", "agent_name": "verifier", "topic": "education", "topic_family": "education", "mode": "on_demand", "few_shot_count": 0, "prompt_length": 7758}
+{"timestamp": "2025-11-29T12:29:49.345246", "session_id": "session_7b56c54e46af", "agent_name": "evaluator", "topic": "education", "topic_family": "education", "mode": "on_demand", "few_shot_count": 0, "prompt_length": 8344}
