@@ -421,10 +421,10 @@ class AsyncLLMProvider:
 
         try:
             models_to_try = [
-                "gemini-2.5-flash-preview-05-20",
-                "gemini-1.5-flash",
-                "gemini-1.5-pro",
-                "gemini-pro",
+                "gemini-2.5-flash",       # Latest working (verified)
+                "gemini-2.5-flash-lite",  # Lightweight alternative
+                "gemini-2.0-flash",       # Fallback
+                "gemini-2.0-flash-lite",  # Lightweight fallback
             ]
 
             for model in models_to_try:
@@ -436,16 +436,21 @@ class AsyncLLMProvider:
                         max_retries=0,  # Disable LangChain retries
                     )
 
-                    # Test the connection
+                    # Test the connection with timeout
                     try:
                         if hasattr(llm, "ainvoke"):
-                            test_response = await llm.ainvoke("Test")
+                            import asyncio
+                            test_response = await asyncio.wait_for(llm.ainvoke("Test"), timeout=5.0)
                         else:
                             test_response = llm.invoke("Test")
 
                         if test_response:
                             self.current_provider = f"google_genai_{model}"
+                            logger.info(f"Google Gemini model {model} initialized successfully")
                             return llm
+                    except asyncio.TimeoutError:
+                        logger.debug(f"Google Gemini {model} test timed out, trying next model")
+                        continue
                     except Exception as test_error:
                         error_str = str(test_error)
                         if (
@@ -545,10 +550,9 @@ class AsyncLLMProvider:
 
         try:
             models_to_try = [
-                "llama-3.1-8b-instant",
-                "llama3-70b-8192",
-                "llama3-8b-8192",
-                "mixtral-8x7b-32768",
+                "llama-3.1-8b-instant",   # Fast and cost-effective (verified working)
+                "llama3-70b-8192",        # For heavy lifting
+                "llama3-8b-8192",         # Lightweight fallback
             ]
 
             for model in models_to_try:
@@ -559,10 +563,11 @@ class AsyncLLMProvider:
                         temperature=self.config.get("temperature", 0.1),
                     )
 
-                    # Test the connection
+                    # Test the connection with timeout
                     try:
                         if hasattr(llm, "ainvoke"):
-                            test_response = await llm.ainvoke("Test")
+                            import asyncio
+                            test_response = await asyncio.wait_for(llm.ainvoke("Test"), timeout=8.0)
                         else:
                             test_response = llm.invoke("Test")
 
@@ -571,7 +576,13 @@ class AsyncLLMProvider:
                             logger.info(f"Groq model {model} initialized successfully")
                             return llm
                     except Exception as test_error:
-                        logger.warning(f"Groq test failed for {model}: {test_error}")
+                        error_str = str(test_error)
+                        if "Connection" in error_str or "ECONNREFUSED" in error_str or "timeout" in error_str.lower():
+                            # Connection issues - skip to next model
+                            logger.debug(f"Groq connection issue for {model}: {test_error}")
+                        else:
+                            # Model not found or other API error - log and try next
+                            logger.warning(f"Groq test failed for {model}: {test_error}")
                         continue
 
                 except Exception as e:
